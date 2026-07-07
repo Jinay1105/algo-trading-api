@@ -32,11 +32,11 @@ if st.sidebar.button("Run Simulation"):
         try:
             # Route to the correct endpoint
             if strategy_choice == "SMA Crossover (Trend Following)":
-                api_url = f"http://localhost:8000/backtest/{ticker}?fast={fast_sma}&slow={slow_sma}"
+                api_url = f"https://algo-trading-api-mpd1.onrender.com/backtest/{ticker}?fast={fast_sma}&slow={slow_sma}"
             elif strategy_choice == "RSI (Mean Reversion)":
-                api_url = f"http://localhost:8000/backtest/rsi/{ticker}?period={rsi_period}"
+                api_url = f"https://algo-trading-api-mpd1.onrender.com/backtest/rsi/{ticker}?period={rsi_period}"
             else:
-                api_url = f"http://localhost:8000/backtest/composite/{ticker}?fast={fast_sma}&slow={slow_sma}&rsi={rsi_period}"
+                api_url = f"https://algo-trading-api-mpd1.onrender.com/backtest/composite/{ticker}?fast={fast_sma}&slow={slow_sma}&rsi={rsi_period}"
             
             response = requests.get(api_url)
             
