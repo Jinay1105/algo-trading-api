@@ -53,6 +53,9 @@ if st.sidebar.button("Run Simulation"):
                     if "error" in data:
                         st.error(f"API Error: {data['error']}")
                     else:
+                        st.warning("🕵️ DEBUG MODE ACTIVATED")
+                        st.write("1. Keys received from backend:", list(data.keys()))
+                        st.write("2. Exact Strategy Name:", strategy_choice)
                         st.success(f"Simulation Complete: {data['strategy']}")
                         
                         # 1. Display Metrics
@@ -64,7 +67,7 @@ if st.sidebar.button("Run Simulation"):
                         col2.metric(label="Strategy Return (Algorithm)", value=f"{strategy_return}%", delta=f"{round(strategy_return - market_return, 2)}% vs Market")
                         
                     if "chart_data" in data:
-                        st.markdown("### Strategy Visualization (Last 200 Days)")
+                        st.markdown("### Strategy Visualization")
                         cd = data['chart_data']
                         
                         # CHART A: SMA CROSSOVER ONLY
