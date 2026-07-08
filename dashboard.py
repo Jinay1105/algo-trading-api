@@ -65,7 +65,7 @@ if st.sidebar.button("Run Simulation"):
                         
                         # 2. --- NEW CODE: Draw the Charts ---
                         if "chart_data" in data:
-                            st.markdown("### Strategy Visualization (Last 200 Days)")
+                            st.markdown("### Strategy Visualization")
                             cd = data['chart_data']
                             
                             # Create a stacked chart (Top: Price, Bottom: RSI)
