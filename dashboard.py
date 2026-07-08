@@ -53,9 +53,6 @@ if st.sidebar.button("Run Simulation"):
                     if "error" in data:
                         st.error(f"API Error: {data['error']}")
                     else:
-                        st.warning("🕵️ DEBUG MODE ACTIVATED")
-                        st.write("1. Keys received from backend:", list(data.keys()))
-                        st.write("2. Exact Strategy Name:", strategy_choice)
                         st.success(f"Simulation Complete: {data['strategy']}")
                         
                         # 1. Display Metrics
