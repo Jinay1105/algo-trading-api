@@ -63,26 +63,41 @@ if st.sidebar.button("Run Simulation"):
                         col1.metric(label="Market Return (Buy & Hold)", value=f"{market_return}%")
                         col2.metric(label="Strategy Return (Algorithm)", value=f"{strategy_return}%", delta=f"{round(strategy_return - market_return, 2)}% vs Market")
                         
-                        # 2. --- NEW CODE: Draw the Charts ---
-                        if "chart_data" in data:
-                            st.markdown("### Strategy Visualization")
-                            cd = data['chart_data']
+                    if "chart_data" in data:
+                        st.markdown("### Strategy Visualization (Last 200 Days)")
+                        cd = data['chart_data']
+                        
+                        # CHART A: SMA CROSSOVER ONLY
+                        if strategy_choice == "SMA Crossover (Trend Following)":
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Close'], name="Stock Price", line=dict(color='gray', width=1)))
+                            fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Fast_SMA'], name="Fast SMA", line=dict(color='green', width=2)))
+                            fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Slow_SMA'], name="Slow SMA", line=dict(color='red', width=2)))
+                            fig.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+                            st.plotly_chart(fig, use_container_width=True)
                             
-                            # Create a stacked chart (Top: Price, Bottom: RSI)
-                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                                                vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                        # CHART B: RSI ONLY
+                        elif strategy_choice == "RSI (Mean Reversion)":
+                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                            fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Close'], name="Stock Price", line=dict(color='gray', width=1)), row=1, col=1)
                             
-                            # Top Chart: Price and Moving Averages
+                            fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['RSI'], name="RSI", line=dict(color='purple', width=2)), row=2, col=1)
+                            fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
+                            fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
+                            fig.update_layout(height=500, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                        # CHART C: COMPOSITE (ALL)
+                        else:
+                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                            
                             fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Close'], name="Stock Price", line=dict(color='gray', width=1)), row=1, col=1)
                             fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Fast_SMA'], name="Fast SMA", line=dict(color='green', width=2)), row=1, col=1)
                             fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['Slow_SMA'], name="Slow SMA", line=dict(color='red', width=2)), row=1, col=1)
                             
-                            # Bottom Chart: RSI
                             fig.add_trace(go.Scatter(x=cd['Date_Str'], y=cd['RSI'], name="RSI", line=dict(color='purple', width=2)), row=2, col=1)
-                            # Add the 70 (Overbought) and 30 (Oversold) Danger Lines
                             fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
                             fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
-                            
                             fig.update_layout(height=600, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
                             st.plotly_chart(fig, use_container_width=True)
                 

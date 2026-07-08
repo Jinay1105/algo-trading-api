@@ -30,13 +30,18 @@ def run_sma_backtest(ticker: str, fast: int = 10, slow: int = 50):
         if hist.empty:
             return {"error": "No data found"}
         results = apply_sma_crossover(hist, fast, slow)
+        chart_df = results.tail(200).copy()
+        chart_df['Date_Str'] = chart_df.index.astype(str) 
+        chart_data = chart_df[['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA']].to_dict(orient="list")
+        
         return {
             "ticker": ticker.upper(),
             "strategy": f"SMA Crossover ({fast}/{slow})",
             "performance": {
                 "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
                 "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2)
-            }
+            },
+            "chart_data": chart_data 
         }
     except Exception as e:
         return {"error": str(e)}
@@ -48,13 +53,17 @@ def run_rsi_backtest(ticker: str, period: int = 14):
         if hist.empty:
             return {"error": "No data found"}
         results = apply_rsi_strategy(hist, period)
+        chart_df = results.tail(200).copy()
+        chart_df['Date_Str'] = chart_df.index.astype(str) 
+        chart_data = chart_df[['Date_Str', 'Close', 'RSI']].to_dict(orient="list")
         return {
             "ticker": ticker.upper(),
-            "strategy": f"RSI Mean-Reversion ({period})",
+            "strategy": f"RSI Mean Reversion ({period})",
             "performance": {
                 "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
                 "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2)
-            }
+            },
+            "chart_data": chart_data # Send it to Streamlit
         }
     except Exception as e:
         return {"error": str(e)}
