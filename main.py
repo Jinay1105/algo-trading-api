@@ -2,7 +2,7 @@ from fastapi import FastAPI
 import yfinance as yf
 import sqlite3
 import pandas as pd
-from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy
+from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
 
 app = FastAPI(title="Algo Trading Backtest API")
 DB_NAME = "market_data.db"
@@ -30,7 +30,8 @@ def run_sma_backtest(ticker: str, fast: int = 10, slow: int = 50):
         if hist.empty:
             return {"error": "No data found"}
         results = apply_sma_crossover(hist, fast, slow)
-        chart_df = results.tail(200).copy()
+        metrics = calculate_metrics(results)
+        chart_df = results.copy()
         chart_df['Date_Str'] = chart_df.index.astype(str) 
         chart_data = chart_df[['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA']].to_dict(orient="list")
         
@@ -39,7 +40,11 @@ def run_sma_backtest(ticker: str, fast: int = 10, slow: int = 50):
             "strategy": f"SMA Crossover ({fast}/{slow})",
             "performance": {
                 "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
-                "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2)
+                "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2),
+                "total_trades": metrics["total_trades"],
+                "win_rate_percent": metrics["win_rate_percent"],
+                "max_drawdown_percent": metrics["max_drawdown_percent"],
+                "sharpe_ratio": metrics["sharpe_ratio"]
             },
             "chart_data": chart_data 
         }
@@ -53,7 +58,8 @@ def run_rsi_backtest(ticker: str, period: int = 14):
         if hist.empty:
             return {"error": "No data found"}
         results = apply_rsi_strategy(hist, period)
-        chart_df = results.tail(200).copy()
+        metrics = calculate_metrics(results)
+        chart_df = results.copy()
         chart_df['Date_Str'] = chart_df.index.astype(str) 
         chart_data = chart_df[['Date_Str', 'Close', 'RSI']].to_dict(orient="list")
         return {
@@ -61,7 +67,11 @@ def run_rsi_backtest(ticker: str, period: int = 14):
             "strategy": f"RSI Mean Reversion ({period})",
             "performance": {
                 "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
-                "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2)
+                "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2),
+                "total_trades": metrics["total_trades"],
+                "win_rate_percent": metrics["win_rate_percent"],
+                "max_drawdown_percent": metrics["max_drawdown_percent"],
+                "sharpe_ratio": metrics["sharpe_ratio"]
             },
             "chart_data": chart_data # Send it to Streamlit
         }
@@ -77,7 +87,8 @@ def run_composite_backtest(ticker: str, fast: int = 10, slow: int = 50, rsi: int
             
         results = apply_composite_strategy(hist, fast, slow, rsi)
         
-        chart_df = results.tail(200).copy()
+        metrics = calculate_metrics(results)
+        chart_df = results.copy()
         chart_df['Date_Str'] = chart_df.index.astype(str) 
         chart_data = chart_df[['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA', 'RSI']].to_dict(orient="list")
         
@@ -86,7 +97,11 @@ def run_composite_backtest(ticker: str, fast: int = 10, slow: int = 50, rsi: int
             "strategy": f"Composite SMA+RSI",
             "performance": {
                 "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
-                "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2)
+                "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2),
+                "total_trades": metrics["total_trades"],
+                "win_rate_percent": metrics["win_rate_percent"],
+                "max_drawdown_percent": metrics["max_drawdown_percent"],
+                "sharpe_ratio": metrics["sharpe_ratio"]
             },
             "chart_data": chart_data 
         }

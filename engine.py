@@ -1,6 +1,64 @@
 import pandas as pd
 import numpy as np
 
+def calculate_metrics(df: pd.DataFrame) -> dict:
+    strategy_returns = df['Strategy_Return'].dropna()
+    market_returns = df['Market_Return'].dropna()
+    
+    total_trades = int((df['Signal'].diff() != 0).sum() / 2)
+    if total_trades == 0:
+        total_trades = int((df['Signal'] == 1).sum() > 0)
+    
+    winning_trades = 0
+    losing_trades = 0
+    trade_returns = []
+    
+    in_position = False
+    entry_price = 0
+    for i in range(len(df)):
+        if not in_position and df['Signal'].iloc[i] == 1:
+            in_position = True
+            entry_price = df['Close'].iloc[i]
+        elif in_position and df['Signal'].iloc[i] == 0:
+            in_position = False
+            exit_price = df['Close'].iloc[i]
+            ret = (exit_price - entry_price) / entry_price
+            trade_returns.append(ret)
+            if ret > 0:
+                winning_trades += 1
+            else:
+                losing_trades += 1
+    
+    if in_position:
+        exit_price = df['Close'].iloc[-1]
+        ret = (exit_price - entry_price) / entry_price
+        trade_returns.append(ret)
+        if ret > 0:
+            winning_trades += 1
+        else:
+            losing_trades += 1
+    
+    win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+    
+    cum_strat = (1 + strategy_returns).cumprod()
+    running_max = cum_strat.expanding().max()
+    drawdown = (cum_strat - running_max) / running_max
+    max_drawdown = abs(drawdown.min()) * 100
+    
+    sharpe = 0
+    if len(strategy_returns) > 1 and strategy_returns.std() > 0:
+        sharpe = (strategy_returns.mean() / strategy_returns.std()) * np.sqrt(252)
+    
+    return {
+        "total_trades": total_trades,
+        "winning_trades": winning_trades,
+        "losing_trades": losing_trades,
+        "win_rate_percent": round(win_rate, 2),
+        "max_drawdown_percent": round(max_drawdown, 2),
+        "sharpe_ratio": round(sharpe, 2),
+        "avg_trade_return_percent": round(np.mean(trade_returns) * 100, 2) if trade_returns else 0
+    }
+
 def apply_sma_crossover(df: pd.DataFrame, fast: int = 10, slow: int = 50):
     df = df.copy()
     df['Fast_SMA'] = df['Close'].rolling(window=fast).mean()
