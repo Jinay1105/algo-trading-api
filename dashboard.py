@@ -391,13 +391,13 @@ CUSTOM_CSS = """
         color: var(--text-primary) !important;
     }
 
-    .stSlider > div > div > div > div {
-        background: var(--accent-primary) !important;
-    }
-
-    .stSlider > div > div > div > div > div {
+    .stSlider [data-testid="stSlider"] > div > div > div[role="slider"] {
         background: var(--accent-primary) !important;
         border-color: var(--accent-primary) !important;
+    }
+
+    .stSlider [data-testid="stSlider"] > div > div > div:first-child {
+        background: var(--accent-primary) !important;
     }
 
     .stSpinner > div {
