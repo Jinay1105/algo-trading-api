@@ -515,9 +515,9 @@ def render_hero():
             <p class="hero-subtitle">Enterprise-grade algorithmic trading simulation platform. Validate strategies against historical data with institutional-quality analytics and visualization.</p>
             <div class="hero-badges">
                 <span class="badge accent">⚡ Real-time API</span>
-                <span class="badge">📊 3 Strategies</span>
-                <span class="badge">🔍 Interactive Charts</span>
-                <span class="badge">📈 Performance Metrics</span>
+                <span class="badge accent">📊 3 Strategies</span>
+                <span class="badge accent">🔍 Interactive Charts</span>
+                <span class="badge accent">📈 Performance Metrics</span>
             </div>
         </div>
     </div>
