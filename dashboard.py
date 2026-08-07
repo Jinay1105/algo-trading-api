@@ -3,8 +3,9 @@ import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
+import os
 
-API_BASE = "https://algo-trading-api-mpd1.onrender.com"
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
 st.set_page_config(
     page_title="Algo Trading API | Quantitative Backtesting Engine",

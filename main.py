@@ -7,6 +7,10 @@ from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_stra
 app = FastAPI(title="Algo Trading Backtest API")
 DB_NAME = "market_data.db"
 
+@app.get("/health")
+def health():
+    return {"status": "healthy", "service": "api"}
+
 def fetch_or_cache_data(ticker: str):
     conn = sqlite3.connect(DB_NAME)
     table_name = ticker.replace(".", "_")
