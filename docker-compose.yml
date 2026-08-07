@@ -1,31 +1,20 @@
 version: '3.8'
 services:
-  api:
-    build: .
-    expose:
-      - "8000"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile.dashboard
+      dockerfile: Dockerfile.dashboard.simple
     expose:
       - "8501"
     environment:
-      - API_BASE=http://api:8000
-    depends_on: [api]
+      - API_BASE=https://algo-trading-api-mpd1.onrender.com
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   nginx:
     image: nginx:alpine
@@ -34,7 +23,6 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - api
       - dashboard
     restart: unless-stopped
     healthcheck:
