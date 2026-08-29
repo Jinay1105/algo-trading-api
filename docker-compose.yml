@@ -2,7 +2,7 @@ services:
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile.dashboard
+      dockerfile: Dockerfile
     expose:
       - "8501"
     environment:
