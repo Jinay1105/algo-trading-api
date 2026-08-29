@@ -62,10 +62,11 @@ app.add_middleware(
 )
 
 import os
+import time
 DB_NAME = os.getenv("DB_PATH", "market_data.db")
 
 def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
-    """Fetch data from cache or yfinance with period-based caching"""
+    """Fetch data from cache or yfinance with period-based caching and retries"""
     if period not in VALID_PERIODS:
         period = "max"
 
@@ -73,18 +74,41 @@ def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
     table_name = ticker.replace(".", "_")
     cache_key = f"{table_name}_{period}"
 
+    # Try cache first
     try:
         df = pd.read_sql(f"SELECT * FROM {cache_key}", conn, parse_dates=['Date'])
         df.set_index('Date', inplace=True)
         print(f"Loaded {ticker} from Database Cache (period={period})!")
+        conn.close()
+        return df
     except Exception:
-        print(f"Downloading {ticker} from Yahoo Finance (period={period})...")
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=period)
-        if not df.empty:
-            df.to_sql(cache_key, conn, if_exists='replace')
+        pass  # Cache miss, fetch from yfinance
+
+    # Fetch from yfinance with retries
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            print(f"Downloading {ticker} from Yahoo Finance (period={period}, attempt={attempt+1})...")
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period)
+            
+            if not df.empty:
+                df.to_sql(cache_key, conn, if_exists='replace')
+                print(f"Successfully fetched {len(df)} rows for {ticker}")
+                conn.close()
+                return df
+            else:
+                print(f"Empty data returned for {ticker} (attempt {attempt+1})")
+        except Exception as e:
+            print(f"Error fetching {ticker}: {e} (attempt {attempt+1})")
+        
+        if attempt < max_retries - 1:
+            wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+            print(f"Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+    
     conn.close()
-    return df
+    return pd.DataFrame()  # Return empty, will trigger 404 in validate_ticker_exists
 
 
 def validate_ticker_exists(ticker: str, period: str = "max") -> pd.DataFrame:

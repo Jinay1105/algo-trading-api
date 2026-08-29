@@ -1006,15 +1006,16 @@ def main():
 
             try:
                 # Build API URL with period parameter
-                period_param = f"&period={period}" if period and period != "max" else ""
+                base_params = f"fast={params['fast']}&slow={params['slow']}"
+                if period and period != "max":
+                    base_params += f"&period={period}"
                 
                 if strategy_key == "sma":
-                    api_url = f"{API_BASE}/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}{period_param}"
+                    api_url = f"{API_BASE}/backtest/{ticker}?{base_params}"
                 elif strategy_key == "rsi":
                     api_url = f"{API_BASE}/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
                 else:
                     api_url = f"{API_BASE}/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
-
                 response = requests.get(api_url, timeout=30)
 
                 if response.status_code != 200:
