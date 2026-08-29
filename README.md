@@ -1,6 +1,7 @@
 # Algorithmic Trading Backtesting Engine
 
 ## Live Demo
+
 🔗 **Dashboard:** http://35.154.235.211/
 🔗 **API:** https://algo-trading-api-mpd1.onrender.com
 
@@ -15,11 +16,13 @@ Hybrid cloud deployment with split frontend/backend:
 [Full Architecture Details](ARCHITECTURE.md)
 
 ## Strategies Implemented
+
 - SMA Crossover (Trend Following)
 - RSI Mean Reversion
 - Composite (SMA + RSI Filter)
 
 ## Metrics Tracked
+
 - Win Rate, Max Drawdown, Sharpe Ratio, Total Trades, Avg Trade Return
 
 ## Quick Start (Local)
@@ -40,4 +43,5 @@ streamlit run dashboard.py
 - **Dashboard**: Manual `git pull && docker compose up -d` on EC2 (or add GitHub Actions)
 
 ## Tech Stack
+
 FastAPI • Streamlit • Pandas • NumPy • Docker • Nginx • AWS EC2 • Render

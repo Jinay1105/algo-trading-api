@@ -21,10 +21,10 @@ class TickerRequest(BaseModel):
         description='Stock ticker symbol (e.g., GOOG, TSLA, RELIANCE.NS)',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )]
-    fast: Optional[Annotated[int, Field(ge=1, le=200)]] = None
-    slow: Optional[Annotated[int, Field(ge=1, le=500)]] = None
-    rsi: Optional[Annotated[int, Field(ge=1, le=100)]] = None
-    period: Annotated[str, Field(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
+    fast: Optional[Annotated[int, Field(ge=1, le=500)]] = None
+    slow: Optional[Annotated[int, Field(ge=1, le=1000)]] = None
+    rsi: Optional[Annotated[int, Field(ge=1, le=500)]] = None
+    period: Annotated[str, Field(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
 
     @field_validator('ticker')
     @classmethod
@@ -67,10 +67,10 @@ import time
 import requests
 DB_NAME = os.getenv("DB_PATH", "market_data.db")
 
-def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
+def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
     """Fetch data from cache or yfinance/yahooquery with retries and fallback"""
     if period not in VALID_PERIODS:
-        period = "max"
+        period = "1y"
 
     conn = sqlite3.connect(DB_NAME)
     table_name = ticker.replace(".", "_")
@@ -132,7 +132,7 @@ def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
     conn.close()
     return pd.DataFrame()
 
-def validate_ticker_exists(ticker: str, period: str = "max") -> pd.DataFrame:
+def validate_ticker_exists(ticker: str, period: str = "1y") -> pd.DataFrame:
     """Fetch data and raise 404 if ticker not found"""
     hist = fetch_or_cache_data(ticker, period)
     if hist.empty:
@@ -162,9 +162,9 @@ def run_sma_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    fast: Annotated[int, Query(ge=1)] = 10,
-    slow: Annotated[int, Query(ge=1)] = 50,
-    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
+    fast: Annotated[int, Query(ge=1,le=500)] = 10,
+    slow: Annotated[int, Query(ge=1,le=1000)] = 50,
+    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
 ):
     if fast >= slow:
         raise HTTPException(status_code=422, detail='Fast SMA must be less than Slow SMA')
@@ -201,8 +201,8 @@ def run_rsi_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    period: Annotated[int, Query(ge=1)] = 14,
-    data_period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
+    period: Annotated[int, Query(ge=1,le = 500)] = 14,
+    data_period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
 ):
     ticker = ticker.strip().upper()
     hist = validate_ticker_exists(ticker, data_period)
@@ -237,10 +237,10 @@ def run_composite_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    fast: Annotated[int, Query(ge=1)] = 10,
-    slow: Annotated[int, Query(ge=1)] = 50,
-    rsi: Annotated[int, Query(ge=1)] = 14,
-    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
+    fast: Annotated[int, Query(ge=1,le=500)] = 10,
+    slow: Annotated[int, Query(ge=1,le=1000)] = 50,
+    rsi: Annotated[int, Query(ge=1,le=500)] = 14,
+    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
 ):
     if fast >= slow:
         raise HTTPException(status_code=422, detail='Fast SMA must be less than Slow SMA')

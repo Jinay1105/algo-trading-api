@@ -1007,8 +1007,7 @@ def main():
             try:
                 # Build API URL with period parameter
                 base_params = f"fast={params['fast']}&slow={params['slow']}"
-                if period and period != "max":
-                    base_params += f"&period={period}"
+                base_params += f"&period={period}"
                 
                 if strategy_key == "sma":
                     api_url = f"{API_BASE}/backtest/{ticker}?{base_params}"
