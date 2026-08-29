@@ -1,3 +1,6 @@
+# EC2 Deployment: Dashboard + Nginx Only
+# FastAPI Backend runs on Render at: https://algo-trading-api-mpd1.onrender.com
+
 services:
   dashboard:
     build:
@@ -6,6 +9,7 @@ services:
     expose:
       - "8501"
     environment:
+      # API_BASE points to Render backend (public HTTPS URL)
       - API_BASE=https://algo-trading-api-mpd1.onrender.com
     restart: unless-stopped
     healthcheck:

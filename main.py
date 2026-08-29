@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Annotated, Optional
 from typing_extensions import Self
@@ -50,7 +51,18 @@ class TickerRequest(BaseModel):
 
 
 app = FastAPI(title="Algo Trading Backtest API")
-DB_NAME = "market_data.db"
+
+# CORS middleware for cross-origin requests (e.g., from dashboard on different domain)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict to your dashboard domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+import os
+DB_NAME = os.getenv("DB_PATH", "market_data.db")
 
 def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
     """Fetch data from cache or yfinance with period-based caching"""

@@ -5,7 +5,11 @@ from plotly.subplots import make_subplots
 import time
 import os
 
-API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+# API_BASE is the internal URL for the FastAPI backend
+# - Local Docker: http://api:8000 (Docker internal networking)
+# - Render: http://api:8000 (Render private networking between services)
+# The browser accesses the dashboard via nginx at the public URL
+API_BASE = os.getenv("API_BASE", "http://api:8000")
 
 st.set_page_config(
     page_title="Algo Trading API | Quantitative Backtesting Engine",
