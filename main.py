@@ -162,8 +162,8 @@ def run_sma_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    fast: Annotated[int, Query(ge=1, le=200)] = 10,
-    slow: Annotated[int, Query(ge=1, le=500)] = 50,
+    fast: Annotated[int, Query(ge=1)] = 10,
+    slow: Annotated[int, Query(ge=1)] = 50,
     period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
 ):
     if fast >= slow:
@@ -201,7 +201,7 @@ def run_rsi_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    period: Annotated[int, Query(ge=1, le=200)] = 14,
+    period: Annotated[int, Query(ge=1)] = 14,
     data_period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
 ):
     ticker = ticker.strip().upper()
@@ -237,9 +237,9 @@ def run_composite_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    fast: Annotated[int, Query(ge=1, le=200)] = 10,
-    slow: Annotated[int, Query(ge=1, le=500)] = 50,
-    rsi: Annotated[int, Query(ge=1, le=100)] = 14,
+    fast: Annotated[int, Query(ge=1)] = 10,
+    slow: Annotated[int, Query(ge=1)] = 50,
+    rsi: Annotated[int, Query(ge=1)] = 14,
     period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "max"
 ):
     if fast >= slow:
