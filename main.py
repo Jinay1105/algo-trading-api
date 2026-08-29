@@ -7,6 +7,7 @@ from typing_extensions import Self
 import yfinance as yf
 import sqlite3
 import pandas as pd
+import yahooquery
 from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
 
 VALID_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}
@@ -63,10 +64,11 @@ app.add_middleware(
 
 import os
 import time
+import requests
 DB_NAME = os.getenv("DB_PATH", "market_data.db")
 
 def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
-    """Fetch data from cache or yfinance with period-based caching and retries"""
+    """Fetch data from cache or yfinance/yahooquery with retries and fallback"""
     if period not in VALID_PERIODS:
         period = "max"
 
@@ -74,7 +76,7 @@ def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
     table_name = ticker.replace(".", "_")
     cache_key = f"{table_name}_{period}"
 
-    # Try cache first
+    # 1. Try cache FIRST
     try:
         df = pd.read_sql(f"SELECT * FROM {cache_key}", conn, parse_dates=['Date'])
         df.set_index('Date', inplace=True)
@@ -82,34 +84,53 @@ def fetch_or_cache_data(ticker: str, period: str = "max") -> pd.DataFrame:
         conn.close()
         return df
     except Exception:
-        pass  # Cache miss, fetch from yfinance
+        pass  # Cache miss, will fetch
 
-    # Fetch from yfinance with retries
-    max_retries = 3
-    for attempt in range(max_retries):
+    # 2. Try yfinance with retries
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+    
+    for attempt in range(3):
         try:
-            print(f"Downloading {ticker} from Yahoo Finance (period={period}, attempt={attempt+1})...")
-            stock = yf.Ticker(ticker)
+            print(f"Fetching {ticker} via yfinance (attempt {attempt+1})...")
+            stock = yf.Ticker(ticker, session=session)
             df = stock.history(period=period)
-            
             if not df.empty:
                 df.to_sql(cache_key, conn, if_exists='replace')
-                print(f"Successfully fetched {len(df)} rows for {ticker}")
+                print(f"yfinance success: {len(df)} rows for {ticker}")
                 conn.close()
                 return df
             else:
-                print(f"Empty data returned for {ticker} (attempt {attempt+1})")
+                print(f"yfinance returned empty (attempt {attempt+1})")
         except Exception as e:
-            print(f"Error fetching {ticker}: {e} (attempt {attempt+1})")
+            print(f"yfinance error: {e} (attempt {attempt+1})")
         
-        if attempt < max_retries - 1:
-            wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-            print(f"Retrying in {wait_time}s...")
-            time.sleep(wait_time)
-    
-    conn.close()
-    return pd.DataFrame()  # Return empty, will trigger 404 in validate_ticker_exists
+        if attempt < 2:
+            time.sleep(2 ** attempt)  # 1s, 2s
 
+    # 3. Fallback: yahooquery
+    try:
+        print(f"Trying yahooquery for {ticker}...")
+        from yahooquery import Ticker as YQTicker
+        ticker_obj = YQTicker(ticker, session=session)
+        df = ticker_obj.history(period=period)
+        
+        if not df.empty and 'close' in df.columns:
+            df = df.reset_index()
+            df = df.rename(columns={
+                'date': 'Date', 'close': 'Close', 'open': 'Open',
+                'high': 'High', 'low': 'Low', 'volume': 'Volume'
+            })
+            df.set_index('Date', inplace=True)
+            df.to_sql(cache_key, conn, if_exists='replace')
+            print(f"yahooquery success: {len(df)} rows for {ticker}")
+            conn.close()
+            return df
+    except Exception as e:
+        print(f"yahooquery failed: {e}")
+
+    conn.close()
+    return pd.DataFrame()
 
 def validate_ticker_exists(ticker: str, period: str = "max") -> pd.DataFrame:
     """Fetch data and raise 404 if ticker not found"""
