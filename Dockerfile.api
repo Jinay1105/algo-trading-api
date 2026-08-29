@@ -1,0 +1,57 @@
+# FastAPI Backend Dockerfile
+# Multi-stage build for production optimization
+# Deployed on Render (managed HTTPS, auto-deploy on push)
+
+# ============================================================
+# BUILD STAGE - Install dependencies
+# ============================================================
+FROM python:3.11-slim AS builder
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# Install system dependencies (minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies to cache layer
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# ============================================================
+# PRODUCTION STAGE - Minimal runtime image
+# ============================================================
+FROM python:3.11-slim AS production
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Copy application code
+COPY main.py engine.py ./
+
+# Create data directory for SQLite cache (persisted via Render Disk)
+RUN mkdir -p /data && chown -R appuser:appuser /app /data
+
+# Switch to non-root user
+USER appuser
+
+# Add local packages to PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Expose port (Render injects $PORT)
+EXPOSE 8000
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run FastAPI with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
