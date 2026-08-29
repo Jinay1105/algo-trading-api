@@ -594,13 +594,13 @@ def render_sidebar():
             with col_fast1:
                 fast_sma = st.slider("Fast Moving Average", 1, 200, 50, help="Short-term SMA period")
             with col_fast2:
-                fast_sma = st.number_input("Fast", 1, 200, fast_sma, label_visibility="collapsed")
+                fast_sma = st.number_input("Fast", 1, 500, fast_sma, label_visibility="collapsed")
             
             col_slow1, col_slow2 = st.columns([3, 1])
             with col_slow1:
                 slow_sma = st.slider("Slow Moving Average", 10, 250, 80, help="Long-term SMA period")
             with col_slow2:
-                slow_sma = st.number_input("Slow", 10, 250, slow_sma, label_visibility="collapsed")
+                slow_sma = st.number_input("Slow", 10, 1000, slow_sma, label_visibility="collapsed")
             
             params = {"fast": fast_sma, "slow": slow_sma}
             st.markdown(f"""
@@ -616,7 +616,7 @@ def render_sidebar():
             with col_rsi1:
                 rsi_period = st.slider("RSI Lookback Period", 1, 100, 20, help="RSI calculation period")
             with col_rsi2:
-                rsi_period = st.number_input("Period", 1, 100, rsi_period, label_visibility="collapsed")
+                rsi_period = st.number_input("Period", 1, 500, rsi_period, label_visibility="collapsed")
             
             params = {"period": rsi_period}
             st.markdown(f"""
@@ -629,19 +629,19 @@ def render_sidebar():
             with col_fast1:
                 fast_sma = st.slider("Fast Moving Average", 1, 200, 50, help="Short-term SMA period")
             with col_fast2:
-                fast_sma = st.number_input("Fast", 1, 200, fast_sma, label_visibility="collapsed", key="comp_fast")
+                fast_sma = st.number_input("Fast", 1, 500, fast_sma, label_visibility="collapsed", key="comp_fast")
             
             col_slow1, col_slow2 = st.columns([3, 1])
             with col_slow1:
                 slow_sma = st.slider("Slow Moving Average", 10, 250, 80, help="Long-term SMA period")
             with col_slow2:
-                slow_sma = st.number_input("Slow", 10, 250, slow_sma, label_visibility="collapsed", key="comp_slow")
+                slow_sma = st.number_input("Slow", 10, 1000, slow_sma, label_visibility="collapsed", key="comp_slow")
             
             col_rsi1, col_rsi2 = st.columns([3, 1])
             with col_rsi1:
                 rsi_period = st.slider("RSI Lookback Period", 1, 100, 20, help="RSI calculation period")
             with col_rsi2:
-                rsi_period = st.number_input("Period", 1, 100, rsi_period, label_visibility="collapsed", key="comp_rsi")
+                rsi_period = st.number_input("Period", 1, 500, rsi_period, label_visibility="collapsed", key="comp_rsi")
             
             params = {"fast": fast_sma, "slow": slow_sma, "rsi": rsi_period}
             st.markdown(f"""
