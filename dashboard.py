@@ -542,10 +542,20 @@ def render_sidebar():
 
         ticker = st.text_input(
             "Stock Ticker",
-            value="RELIANCE.NS",
+            value="",
             placeholder="e.g., RELIANCE.NS, AAPL, TSLA",
             help="Enter Yahoo Finance ticker symbol"
         )
+
+        # Period selection for data range
+        period_options = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
+        period = st.selectbox(
+            "Data Period",
+            options=period_options,
+            index=period_options.index("1y"),
+            help="Select how much historical data to fetch"
+        )
+        
 
         st.markdown('<div class="section-header" style="margin-top: 1.5rem;"><span class="section-title">Strategy Selection</span></div>', unsafe_allow_html=True)
 
@@ -576,8 +586,18 @@ def render_sidebar():
 
         params = {}
         if strategy_key == "sma":
-            fast_sma = st.slider("Fast Moving Average", 5, 50, 10, help="Short-term SMA period")
-            slow_sma = st.slider("Slow Moving Average", 20, 200, 50, help="Long-term SMA period")
+            col_fast1, col_fast2 = st.columns([3, 1])
+            with col_fast1:
+                fast_sma = st.slider("Fast Moving Average", 1, 200, 50, help="Short-term SMA period")
+            with col_fast2:
+                fast_sma = st.number_input("Fast", 1, 200, fast_sma, label_visibility="collapsed")
+            
+            col_slow1, col_slow2 = st.columns([3, 1])
+            with col_slow1:
+                slow_sma = st.slider("Slow Moving Average", 10, 250, 80, help="Long-term SMA period")
+            with col_slow2:
+                slow_sma = st.number_input("Slow", 10, 250, slow_sma, label_visibility="collapsed")
+            
             params = {"fast": fast_sma, "slow": slow_sma}
             st.markdown(f"""
             <div class="param-group">
@@ -588,7 +608,12 @@ def render_sidebar():
             </div>
             """, unsafe_allow_html=True)
         elif strategy_key == "rsi":
-            rsi_period = st.slider("RSI Lookback Period", 5, 30, 14, help="RSI calculation period")
+            col_rsi1, col_rsi2 = st.columns([3, 1])
+            with col_rsi1:
+                rsi_period = st.slider("RSI Lookback Period", 1, 100, 20, help="RSI calculation period")
+            with col_rsi2:
+                rsi_period = st.number_input("Period", 1, 100, rsi_period, label_visibility="collapsed")
+            
             params = {"period": rsi_period}
             st.markdown(f"""
             <div class="param-group">
@@ -596,9 +621,24 @@ def render_sidebar():
             </div>
             """, unsafe_allow_html=True)
         else:
-            fast_sma = st.slider("Fast Moving Average", 5, 50, 10, help="Short-term SMA period")
-            slow_sma = st.slider("Slow Moving Average", 20, 200, 50, help="Long-term SMA period")
-            rsi_period = st.slider("RSI Lookback Period", 5, 30, 14, help="RSI calculation period")
+            col_fast1, col_fast2 = st.columns([3, 1])
+            with col_fast1:
+                fast_sma = st.slider("Fast Moving Average", 1, 200, 50, help="Short-term SMA period")
+            with col_fast2:
+                fast_sma = st.number_input("Fast", 1, 200, fast_sma, label_visibility="collapsed", key="comp_fast")
+            
+            col_slow1, col_slow2 = st.columns([3, 1])
+            with col_slow1:
+                slow_sma = st.slider("Slow Moving Average", 10, 250, 80, help="Long-term SMA period")
+            with col_slow2:
+                slow_sma = st.number_input("Slow", 10, 250, slow_sma, label_visibility="collapsed", key="comp_slow")
+            
+            col_rsi1, col_rsi2 = st.columns([3, 1])
+            with col_rsi1:
+                rsi_period = st.slider("RSI Lookback Period", 1, 100, 20, help="RSI calculation period")
+            with col_rsi2:
+                rsi_period = st.number_input("Period", 1, 100, rsi_period, label_visibility="collapsed", key="comp_rsi")
+            
             params = {"fast": fast_sma, "slow": slow_sma, "rsi": rsi_period}
             st.markdown(f"""
             <div class="param-group">
@@ -615,7 +655,7 @@ def render_sidebar():
         st.markdown('<div style="margin-top: 1.5rem;"></div>', unsafe_allow_html=True)
         run_button = st.button("🚀 Run Simulation", type="primary", use_container_width=True)
 
-    return ticker, strategy_choice, strategy_key, params, run_button
+    return ticker, strategy_choice, strategy_key, params, run_button, period
 
 def render_metrics(data):
     perf = data['performance']
@@ -630,6 +670,19 @@ def render_metrics(data):
     is_positive = excess_return >= 0
     delta_class = "positive" if is_positive else "negative"
     delta_prefix = "+" if is_positive else ""
+
+    # Show analysis window if present
+    if "analysis_window" in data:
+        aw = data["analysis_window"]
+        if aw.get("start_date") and aw.get("end_date"):
+            st.markdown(f"""
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem;">
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem;">
+                    <div><strong>Analysis Window:</strong> {aw['start_date']} → {aw['end_date']}</div>
+                    <div><strong>Window Days:</strong> {aw.get('window_days', 'N/A')} trading days</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -925,7 +978,7 @@ def main():
 
     render_hero()
 
-    ticker, strategy_choice, strategy_key, params, run_button = render_sidebar()
+    ticker, strategy_choice, strategy_key, params, run_button, period = render_sidebar()
 
     if run_button:
         with st.spinner(""):
@@ -948,18 +1001,21 @@ def main():
             status_text.empty()
 
             try:
+                # Build API URL with period parameter
+                period_param = f"&period={period}" if period and period != "max" else ""
+                
                 if strategy_key == "sma":
-                    api_url = f"{API_BASE}/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}"
+                    api_url = f"{API_BASE}/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}{period_param}"
                 elif strategy_key == "rsi":
-                    api_url = f"{API_BASE}/backtest/rsi/{ticker}?period={params['period']}"
+                    api_url = f"{API_BASE}/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
                 else:
-                    api_url = f"{API_BASE}/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}"
+                    api_url = f"{API_BASE}/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
 
                 response = requests.get(api_url, timeout=30)
 
                 if response.status_code != 200:
-                    st.error(f"🚨 System Error {response.status_code}: The API route is broken.")
-                    st.json(response.json())
+                    error_code = response.json()
+                    st.error(f"🚨 System Error {response.status_code} : {error_code['detail']}")
                 else:
                     data = response.json()
                     if "error" in data:
@@ -969,6 +1025,7 @@ def main():
 
                         render_metrics(data)
                         render_charts(data, strategy_choice)
+                    
 
             except requests.exceptions.Timeout:
                 st.error("🚨 Request Timeout: The API took too long to respond. Please try again.")
