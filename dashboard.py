@@ -1005,12 +1005,8 @@ def main():
             status_text.empty()
 
             try:
-                # Build API URL with period parameter
-                base_params = f"fast={params['fast']}&slow={params['slow']}"
-                base_params += f"&period={period}"
-                
                 if strategy_key == "sma":
-                    api_url = f"{API_BASE}/backtest/{ticker}?{base_params}"
+                    api_url = f"{API_BASE}/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
                 elif strategy_key == "rsi":
                     api_url = f"{API_BASE}/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
                 else:
