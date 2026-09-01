@@ -547,7 +547,7 @@ def render_sidebar():
         ticker = st.text_input(
             "Stock Ticker",
             value="",
-            placeholder="e.g., RELIANCE.NS, AAPL, TSLA",
+            placeholder="e.g., RELIANCE.NS, AAPL, TSLA, NVDA",
             help="Enter Yahoo Finance ticker symbol"
         )
 
