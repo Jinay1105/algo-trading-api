@@ -86,15 +86,16 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
     except Exception:
         pass  # Cache miss, will fetch
 
-    # 2. Try yfinance with retries
+    # 2. Try yfinance with retries - increased timeout
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-    
+
     for attempt in range(3):
         try:
             print(f"Fetching {ticker} via yfinance (attempt {attempt+1})...")
             stock = yf.Ticker(ticker, session=session)
-            df = stock.history(period=period)
+            # Add timeout to yfinance
+            df = stock.history(period=period, timeout=30)
             if not df.empty:
                 df.to_sql(cache_key, conn, if_exists='replace')
                 print(f"yfinance success: {len(df)} rows for {ticker}")
@@ -126,6 +127,8 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
             print(f"yahooquery success: {len(df)} rows for {ticker}")
             conn.close()
             return df
+        else:
+            print(f"yahooquery returned empty or invalid columns: {df.columns.tolist() if not df.empty else 'empty'}")
     except Exception as e:
         print(f"yahooquery failed: {e}")
 

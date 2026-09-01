@@ -1005,6 +1005,7 @@ def main():
             status_text.empty()
 
             try:
+                
                 if strategy_key == "sma":
                     api_url = f"{API_BASE}/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
                 elif strategy_key == "rsi":
