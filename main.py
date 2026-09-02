@@ -7,7 +7,7 @@ from typing_extensions import Self
 import yfinance as yf
 import sqlite3
 import pandas as pd
-import yahooquery
+from yahooquery import Ticker as YQTicker
 from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
 
 VALID_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}
@@ -66,9 +66,60 @@ import os
 import time
 import requests
 DB_NAME = os.getenv("DB_PATH", "market_data.db")
+# Get Alpha Vantage API key from environment (free at alphavantage.co)
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
+
+def fetch_from_alpha_vantage(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """Fetch data from Alpha Vantage as fallback - works from cloud IPs"""
+    if not ALPHA_VANTAGE_KEY:
+        return pd.DataFrame()
+    
+    outputsize = "full" if period in ["5y", "10y", "max"] else "compact"
+    
+    url = "https://www.alphavantage.co/query"
+    params = {
+        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "symbol": ticker,
+        "outputsize": outputsize,
+        "apikey": ALPHA_VANTAGE_KEY,
+        "datatype": "json"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+        
+        if "Time Series (Daily)" not in data:
+            print(f"Alpha Vantage error: {data.get('Note', data.get('Error Message', 'Unknown error'))}")
+            return pd.DataFrame()
+        
+        ts = data["Time Series (Daily)"]
+        df = pd.DataFrame.from_dict(ts, orient='index')
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        
+        df = df.rename(columns={
+            '1. open': 'Open', '2. high': 'High', '3. low': 'Low',
+            '4. close': 'Close', '5. adjusted close': 'Adj Close', '6. volume': 'Volume'
+        })
+        
+        if period != "max":
+            period_days = {"1d": 1, "5d": 5, "1mo": 30, "3mo": 90, "6mo": 180, 
+                          "1y": 365, "2y": 730, "5y": 1825, "10y": 3650}
+            days = period_days.get(period, 365)
+            cutoff = df.index.max() - pd.Timedelta(days=days)
+            df = df[df.index >= cutoff]
+        
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+        print(f"Alpha Vantage success: {len(df)} rows for {ticker}")
+        return df
+        
+    except Exception as e:
+        print(f"Alpha Vantage failed: {e}")
+        return pd.DataFrame()
 
 def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """Fetch data from cache or yfinance/yahooquery with retries and fallback"""
+    """Fetch data from cache or yfinance/yahooquery/Alpha Vantage with retries and fallback"""
     if period not in VALID_PERIODS:
         period = "1y"
 
@@ -86,16 +137,15 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
     except Exception:
         pass  # Cache miss, will fetch
 
-    # 2. Try yfinance with retries - increased timeout
+    # 2. Try yfinance with retries - increased timeout for cloud
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
 
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             print(f"Fetching {ticker} via yfinance (attempt {attempt+1})...")
             stock = yf.Ticker(ticker, session=session)
-            # Add timeout to yfinance
-            df = stock.history(period=period, timeout=30)
+            df = stock.history(period=period, timeout=60)
             if not df.empty:
                 df.to_sql(cache_key, conn, if_exists='replace')
                 print(f"yfinance success: {len(df)} rows for {ticker}")
@@ -106,13 +156,26 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
         except Exception as e:
             print(f"yfinance error: {e} (attempt {attempt+1})")
         
-        if attempt < 2:
-            time.sleep(2 ** attempt)  # 1s, 2s
+        if attempt < 4:
+            time.sleep(2 ** attempt)
 
-    # 3. Fallback: yahooquery
+    # 3. If 'max' failed, try with '10y' as fallback
+    if period == "max":
+        print(f"'max' period failed for {ticker}, trying fallback '10y'...")
+        try:
+            stock = yf.Ticker(ticker, session=session)
+            df = stock.history(period="10y", timeout=60)
+            if not df.empty:
+                df.to_sql(cache_key, conn, if_exists='replace')
+                print(f"yfinance fallback '10y' success: {len(df)} rows for {ticker}")
+                conn.close()
+                return df
+        except Exception as e:
+            print(f"yfinance fallback '10y' failed: {e}")
+
+    # 4. Fallback: yahooquery
     try:
         print(f"Trying yahooquery for {ticker}...")
-        from yahooquery import Ticker as YQTicker
         ticker_obj = YQTicker(ticker, session=session)
         df = ticker_obj.history(period=period)
         
@@ -131,6 +194,14 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
             print(f"yahooquery returned empty or invalid columns: {df.columns.tolist() if not df.empty else 'empty'}")
     except Exception as e:
         print(f"yahooquery failed: {e}")
+
+    # 5. Final fallback: Alpha Vantage (works from cloud IPs)
+    print(f"Trying Alpha Vantage for {ticker}...")
+    df = fetch_from_alpha_vantage(ticker, period)
+    if not df.empty:
+        df.to_sql(cache_key, conn, if_exists='replace')
+        conn.close()
+        return df
 
     conn.close()
     return pd.DataFrame()
