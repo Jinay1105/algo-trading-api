@@ -67,7 +67,7 @@ import time
 import requests
 DB_NAME = os.getenv("DB_PATH", "market_data.db")
 # Get Alpha Vantage API key from environment (free at alphavantage.co)
-ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "IYLQWRSLWFDGNA2D")
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
 
 def fetch_from_alpha_vantage(ticker: str, period: str = "1y") -> pd.DataFrame:
     """Fetch data from Alpha Vantage as fallback - works from cloud IPs"""
