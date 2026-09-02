@@ -9,7 +9,7 @@ import os
 # - Local Docker: http://api:8000 (Docker internal networking)
 # - Render: http://api:8000 (Render private networking between services)
 # The browser accesses the dashboard via nginx at the public URL
-API_BASE = os.getenv("API_BASE", " http://127.0.0.1:8000")
+API_BASE = os.getenv("API_BASE", "https://algo-trading-api-mpd1.onrender.com")
 
 st.set_page_config(
     page_title="Algo Trading API | Quantitative Backtesting Engine",
