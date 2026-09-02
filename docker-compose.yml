@@ -1,16 +1,35 @@
-# EC2 Deployment: Dashboard + Nginx Only
-# FastAPI Backend runs on Render at: https://algo-trading-api-mpd1.onrender.com
-
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: algo-trading-api
+    expose:
+      - "8000"
+    volumes:
+      - ./market_data.db:/app/market_data.db
+    environment:
+      - DB_PATH=/app/market_data.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   dashboard:
     build:
       context: .
       dockerfile: Dockerfile
-    expose:
-      - "8501"
+    container_name: algo-trading-dashboard
+    ports:
+      - "8501:8501"
     environment:
-      # API_BASE points to Render backend (public HTTPS URL)
-      - API_BASE= https://algo-trading-api-mpd1.onrender.com
+      - API_BASE=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
@@ -21,6 +40,7 @@ services:
 
   nginx:
     image: nginx:alpine
+    container_name: algo-trading-nginx
     ports:
       - "80:80"
     volumes:
