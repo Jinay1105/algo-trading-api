@@ -7,9 +7,7 @@ services:
     expose:
       - "8000"
     volumes:
-      - ./market_data.db:/app/market_data.db
-    environment:
-      - DB_PATH=/app/market_data.db
+      - api-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -55,3 +53,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+volumes:
+  api-data:
