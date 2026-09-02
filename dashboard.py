@@ -1012,8 +1012,12 @@ def main():
                 response = requests.get(api_url, timeout=30)
 
                 if response.status_code != 200:
-                    error_code = response.json()
-                    st.error(f"🚨 System Error {response.status_code} : {error_code['detail']}")
+                    try:
+                        error_code = response.json()
+                        error_msg = error_code.get('detail', 'Unknown error')
+                    except:
+                        error_msg = response.text[:300] if response.text else 'Unknown error'
+                    st.error(f"🚨 System Error {response.status_code} : {error_msg}")
                 else:
                     data = response.json()
                     if "error" in data:
