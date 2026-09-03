@@ -21,10 +21,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: algo-trading-dashboard
-    ports:
-      - "8501:8501"
+    expose:
+      - "8501"
     environment:
-      - API_BASE=http://api:8000
+      - API_BASE=https://algo-trading-api-mpd1.onrender.com
+      - FALLBACK_API_BASE=http://api:8000
     depends_on:
       api:
         condition: service_healthy

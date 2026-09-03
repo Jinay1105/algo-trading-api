@@ -6,7 +6,10 @@ import time
 import os
 
 
-API_BASE = os.getenv("API_BASE", "http://api:8000")
+# API_BASE is the primary URL (Render production)
+API_BASE = os.getenv("API_BASE", "https://algo-trading-api-mpd1.onrender.com")
+# Fallback API for when Render is rate-limited (local Docker)
+FALLBACK_API_BASE = os.getenv("FALLBACK_API_BASE", "http://api:8000")
 
 st.set_page_config(
     page_title="Algo Trading API | Quantitative Backtesting Engine",
@@ -1003,21 +1006,37 @@ def main():
 
             try:
                 
+                # Build API URL path based on strategy
                 if strategy_key == "sma":
-                    api_url = f"{API_BASE}/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
+                    api_path = f"/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
                 elif strategy_key == "rsi":
-                    api_url = f"{API_BASE}/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
+                    api_path = f"/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
                 else:
-                    api_url = f"{API_BASE}/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
-                response = requests.get(api_url, timeout=30)
-
-                if response.status_code != 200:
+                    api_path = f"/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
+                
+                # Try primary API (Render) first, then fallback to local
+                response = None
+                for base_url, label in [(API_BASE, "Render"), (FALLBACK_API_BASE, "Local Docker")]:
                     try:
-                        error_code = response.json()
-                        error_msg = error_code.get('detail', 'Unknown error')
+                        status_text.markdown(f'<div style="color: var(--text-secondary); font-size: 0.875rem;">Trying {label} API...</div>', unsafe_allow_html=True)
+                        response = requests.get(f"{base_url}{api_path}", timeout=30)
+                        if response.status_code == 200:
+                            st.info(f"✅ Using {label} API")
+                            break
+                        else:
+                            st.warning(f"⚠️ {label} API returned {response.status_code}, trying fallback...")
+                    except requests.exceptions.ConnectionError:
+                        st.warning(f"⚠️ {label} API unreachable, trying fallback...")
+                    except requests.exceptions.Timeout:
+                        st.warning(f"⚠️ {label} API timeout, trying fallback...")
+                
+                if response is None or response.status_code != 200:
+                    try:
+                        error_code = response.json() if response else {}
+                        error_msg = error_code.get('detail', 'All APIs failed')
                     except:
-                        error_msg = response.text[:300] if response.text else 'Unknown error'
-                    st.error(f"🚨 System Error {response.status_code} : {error_msg}")
+                        error_msg = response.text[:300] if response and response.text else 'All APIs failed'
+                    st.error(f"🚨 System Error: {error_msg}")
                 else:
                     data = response.json()
                     if "error" in data:
