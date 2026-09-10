@@ -409,6 +409,14 @@ CUSTOM_CSS = """
         border-top-color: var(--accent-primary) !important;
     }
 
+    .stSpinner > div > div:last-child {
+        background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 600;
+    }
+
     .stAlert {
         border-radius: var(--radius-md) !important;
         border: none !important;
@@ -566,7 +574,7 @@ def render_sidebar():
         strategy_options = [
             ("SMA Crossover (Trend Following)", "sma", "Trend-following strategy using dual moving average crossovers"),
             ("RSI (Mean Reversion)", "rsi", "Mean reversion strategy using Relative Strength Index"),
-            ("Composite (SMA + RSI Filter)", "composite", "Combined strategy with SMA signals filtered by RSI")
+            ("Composite (SMA + RSI)", "composite", "Combined strategy with SMA signals filtered by RSI")
         ]
 
         strategy_choice = st.selectbox(
@@ -985,7 +993,7 @@ def main():
     ticker, strategy_choice, strategy_key, params, run_button, period = render_sidebar()
 
     if run_button:
-        with st.spinner(""):
+        with st.spinner("Running Backtest..."):
             progress_bar = st.progress(0)
             status_text = st.empty()
 
@@ -1016,15 +1024,15 @@ def main():
                 
                 # Try primary API (Render) first, then fallback to local
                 response = None
-                for base_url, label in [(API_BASE, "Render"), (FALLBACK_API_BASE, "Local Docker")]:
+                for base_url, label in [(API_BASE, "Render"),(FALLBACK_API_BASE, "Local")]:
                     try:
-                        status_text.markdown(f'<div style="color: var(--text-secondary); font-size: 0.875rem;">Trying {label} API...</div>', unsafe_allow_html=True)
+                        # status_text.markdown(f'<div style="color: var(--text-secondary); font-size: 0.875rem;">Trying {label} API...</div>', unsafe_allow_html=True)
                         response = requests.get(f"{base_url}{api_path}", timeout=30)
                         if response.status_code == 200:
-                            st.info(f"✅ Using {label} API")
+                            st.info(f"✅ Used {label} API")
                             break
                         else:
-                            st.warning(f"⚠️ {label} API returned {response.status_code}, trying fallback...")
+                            st.warning(f"⚠️ {label} API returned Render FAiled, trying fallback...")
                     except requests.exceptions.ConnectionError:
                         st.warning(f"⚠️ {label} API unreachable, trying fallback...")
                     except requests.exceptions.Timeout:
@@ -1066,7 +1074,7 @@ def main():
 
     st.markdown("""
     <div class="footer">
-        <p>Algo Trading API · Quantitative Backtesting Engine </p>
+        <p>Algo Trading · Quantitative Backtesting Engine </p>
         <p style="margin-top: 0.5rem; font-size: 0.75rem;">⚠️ This is a simulation tool for educational purposes. Past performance does not guarantee future results.</p>
     </div>
     """, unsafe_allow_html=True)

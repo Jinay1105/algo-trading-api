@@ -154,7 +154,7 @@ def health():
 
 
 # Use Path parameter with validation for path parameters
-@app.get("/backtest/{ticker}")
+@app.get("/backtest/sma/{ticker}")
 def run_sma_backtest(
     ticker: Annotated[str, Path(
         min_length=1,
@@ -201,13 +201,13 @@ def run_rsi_backtest(
         description='Stock ticker symbol',
         examples=['GOOG', 'TSLA', 'RELIANCE.NS']
     )],
-    period: Annotated[int, Query(ge=1,le = 500)] = 14,
-    data_period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
+    rsi: Annotated[int, Query(ge=1,le = 500)] = 14,
+    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
 ):
     ticker = ticker.strip().upper()
-    hist = validate_ticker_exists(ticker, data_period)
+    hist = validate_ticker_exists(ticker, period)
 
-    results = apply_rsi_strategy(hist, period)
+    results = apply_rsi_strategy(hist, rsi)
     metrics = calculate_metrics(results)
     chart_df = results.copy()
     chart_df['Date_Str'] = chart_df.index.astype(str)
@@ -215,7 +215,7 @@ def run_rsi_backtest(
 
     return {
         "ticker": ticker,
-        "strategy": f"RSI Mean Reversion ({period})",
+        "strategy": f"RSI Mean Reversion ({rsi})",
         "performance": {
             "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
             "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2),
