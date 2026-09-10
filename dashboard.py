@@ -1016,7 +1016,7 @@ def main():
                 
                 # Build API URL path based on strategy
                 if strategy_key == "sma":
-                    api_path = f"/backtest/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
+                    api_path = f"/backtest/sma/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
                 elif strategy_key == "rsi":
                     api_path = f"/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
                 else:
