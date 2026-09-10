@@ -1018,7 +1018,7 @@ def main():
                 if strategy_key == "sma":
                     api_path = f"/backtest/sma/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
                 elif strategy_key == "rsi":
-                    api_path = f"/backtest/rsi/{ticker}?period={params['period']}&data_period={period}"
+                    api_path = f"/backtest/rsi/{ticker}?rsi={params['period']}&period={period}"
                 else:
                     api_path = f"/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
                 
