@@ -67,8 +67,45 @@ import time
 import requests
 DB_NAME = os.getenv("DB_PATH", "market_data.db")
 
-def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """Fetch data from cache or yfinance/yahooquery with retries and fallback"""
+# Currency symbol mapping
+CURRENCY_SYMBOLS = {
+    "INR": "₹",
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+    "JPY": "¥",
+    "CNY": "¥",
+    "KRW": "₩",
+    "SGD": "S$",
+    "HKD": "HK$",
+    "CAD": "C$",
+    "AUD": "A$",
+    "CHF": "CHF",
+}
+
+def get_currency_symbol(currency_code: str | None) -> str:
+    """Map currency code to display symbol. Returns empty string if unknown."""
+    if not currency_code:
+        return ""
+    return CURRENCY_SYMBOLS.get(currency_code.upper(), "")
+
+
+def fetch_ticker_currency(ticker: str) -> str | None:
+    """Fetch currency code for a ticker from yfinance metadata (quoteSummary)."""
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+        info = yf.Ticker(ticker, session=session).info
+        currency = info.get("currency")
+        if currency:
+            return str(currency).strip().upper()
+    except Exception:
+        pass
+    return None
+
+
+def fetch_or_cache_data(ticker: str, period: str = "1y") -> tuple[pd.DataFrame, str | None]:
+    """Fetch data from cache or yfinance/yahooquery with retries and fallback. Returns (dataframe, currency_code)."""
     if period not in VALID_PERIODS:
         period = "1y"
 
@@ -81,8 +118,24 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
         df = pd.read_sql(f"SELECT * FROM {cache_key}", conn, parse_dates=['Date'])
         df.set_index('Date', inplace=True)
         print(f"Loaded {ticker} from Database Cache (period={period})!")
+        
+        # Try to get currency from cached metadata table
+        currency = None
+        try:
+            meta_df = pd.read_sql(f"SELECT currency FROM {cache_key}_meta", conn)
+            if not meta_df.empty:
+                currency = meta_df['currency'].iloc[0]
+        except Exception:
+            pass
+
+        # Prices cached before currency tracking have no _meta row; fill it once
+        if not currency:
+            currency = fetch_ticker_currency(ticker)
+            if currency:
+                pd.DataFrame([{"currency": currency}]).to_sql(f"{cache_key}_meta", conn, if_exists='replace')
+
         conn.close()
-        return df
+        return df, currency
     except Exception:
         pass  # Cache miss, will fetch
 
@@ -90,16 +143,29 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
     
+    currency = None
     for attempt in range(3):
         try:
             print(f"Fetching {ticker} via yfinance (attempt {attempt+1})...")
             stock = yf.Ticker(ticker, session=session)
             df = stock.history(period=period)
             if not df.empty:
+                # Get currency from ticker info
+                try:
+                    info = stock.info
+                    currency = info.get("currency")
+                    if currency:
+                        currency = currency.upper()
+                except Exception:
+                    pass
+                
                 df.to_sql(cache_key, conn, if_exists='replace')
-                print(f"yfinance success: {len(df)} rows for {ticker}")
+                # Cache currency metadata
+                if currency:
+                    pd.DataFrame([{"currency": currency}]).to_sql(f"{cache_key}_meta", conn, if_exists='replace')
+                print(f"yfinance success: {len(df)} rows for {ticker}, currency={currency}")
                 conn.close()
-                return df
+                return df, currency
             else:
                 print(f"yfinance returned empty (attempt {attempt+1})")
         except Exception as e:
@@ -123,24 +189,32 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> pd.DataFrame:
             })
             df.set_index('Date', inplace=True)
             df.to_sql(cache_key, conn, if_exists='replace')
-            print(f"yahooquery success: {len(df)} rows for {ticker}")
+            # yahooquery doesn't easily expose currency, try to get from summary_detail
+            try:
+                summary = ticker_obj.summary_detail
+                if ticker in summary and 'currency' in summary[ticker]:
+                    currency = summary[ticker]['currency'].upper()
+                    pd.DataFrame([{"currency": currency}]).to_sql(f"{cache_key}_meta", conn, if_exists='replace')
+            except Exception:
+                pass
+            print(f"yahooquery success: {len(df)} rows for {ticker}, currency={currency}")
             conn.close()
-            return df
+            return df, currency
     except Exception as e:
         print(f"yahooquery failed: {e}")
 
     conn.close()
-    return pd.DataFrame()
+    return pd.DataFrame(), None
 
-def validate_ticker_exists(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """Fetch data and raise 404 if ticker not found"""
-    hist = fetch_or_cache_data(ticker, period)
+def validate_ticker_exists(ticker: str, period: str = "1y") -> tuple[pd.DataFrame, str | None]:
+    """Fetch data and raise 404 if ticker not found. Returns (dataframe, currency_code)."""
+    hist, currency = fetch_or_cache_data(ticker, period)
     if hist.empty:
         raise HTTPException(
             status_code=404,
             detail=f"Ticker '{ticker}' not found or no data available for period '{period}'"
         )
-    return hist
+    return hist, currency
 
 
 @app.get("/")
@@ -170,7 +244,7 @@ def run_sma_backtest(
         raise HTTPException(status_code=422, detail='Fast SMA must be less than Slow SMA')
 
     ticker = ticker.strip().upper()
-    hist = validate_ticker_exists(ticker, period)
+    hist, currency = validate_ticker_exists(ticker, period)
 
     results = apply_sma_crossover(hist, fast, slow)
     metrics = calculate_metrics(results)
@@ -180,6 +254,8 @@ def run_sma_backtest(
 
     return {
         "ticker": ticker,
+        "currency": currency,
+        "currency_symbol": get_currency_symbol(currency),
         "strategy": f"SMA Crossover ({fast}/{slow})",
         "performance": {
             "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
@@ -205,7 +281,7 @@ def run_rsi_backtest(
     period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
 ):
     ticker = ticker.strip().upper()
-    hist = validate_ticker_exists(ticker, period)
+    hist, currency = validate_ticker_exists(ticker, period)
 
     results = apply_rsi_strategy(hist, rsi)
     metrics = calculate_metrics(results)
@@ -215,6 +291,8 @@ def run_rsi_backtest(
 
     return {
         "ticker": ticker,
+        "currency": currency,
+        "currency_symbol": get_currency_symbol(currency),
         "strategy": f"RSI Mean Reversion ({rsi})",
         "performance": {
             "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
@@ -246,7 +324,7 @@ def run_composite_backtest(
         raise HTTPException(status_code=422, detail='Fast SMA must be less than Slow SMA')
 
     ticker = ticker.strip().upper()
-    hist = validate_ticker_exists(ticker, period)
+    hist, currency = validate_ticker_exists(ticker, period)
 
     results = apply_composite_strategy(hist, fast, slow, rsi)
     metrics = calculate_metrics(results)
@@ -256,6 +334,8 @@ def run_composite_backtest(
 
     return {
         "ticker": ticker,
+        "currency": currency,
+        "currency_symbol": get_currency_symbol(currency),
         "strategy": f"Composite SMA+RSI",
         "performance": {
             "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
@@ -273,7 +353,7 @@ def run_composite_backtest(
 @app.post("/backtest")
 def run_backtest(request: TickerRequest):
     ticker = request.ticker  # Already validated & normalized
-    hist = validate_ticker_exists(ticker, request.period)
+    hist, currency = validate_ticker_exists(ticker, request.period)
 
     has_sma = request.fast is not None and request.slow is not None
     has_rsi = request.rsi is not None
@@ -303,6 +383,8 @@ def run_backtest(request: TickerRequest):
 
     return {
         "ticker": ticker,
+        "currency": currency,
+        "currency_symbol": get_currency_symbol(currency),
         "strategy": strategy_name,
         "performance": {
             "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),

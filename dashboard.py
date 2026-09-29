@@ -536,6 +536,47 @@ def render_hero():
     </div>
     """, unsafe_allow_html=True)
 
+def _sync_slider_to_input(slider_key, input_key):
+    st.session_state[input_key] = st.session_state[slider_key]
+
+
+def _sync_input_to_slider(slider_key, input_key):
+    st.session_state[slider_key] = int(st.session_state[input_key])
+
+
+def param_slider_input(slider_key, input_key, min_val, max_val, default, label, help_text, input_label=None):
+    """Render a slider and a number input that stay in sync in both directions."""
+    if slider_key not in st.session_state:
+        st.session_state[slider_key] = default
+    if input_key not in st.session_state:
+        st.session_state[input_key] = default
+
+    col_slider, col_input = st.columns([3, 1])
+    with col_slider:
+        st.slider(label, min_val, max_val, key=slider_key, help=help_text,
+                  on_change=_sync_slider_to_input, args=(slider_key, input_key))
+    with col_input:
+        st.number_input(input_label or label, min_val, max_val, key=input_key, step=1,
+                        label_visibility="collapsed",
+                        on_change=_sync_input_to_slider, args=(slider_key, input_key))
+
+    return int(st.session_state[input_key])
+
+
+def get_currency_symbol(data):
+    """Currency symbol from the API response, or empty string when unknown."""
+    symbol = data.get("currency_symbol") if isinstance(data, dict) else None
+    if not symbol:
+        return ""
+    return str(symbol).strip()
+
+
+def price_axis_label(data):
+    """Y-axis title: 'Price (₹)' when known, neutral 'Price' otherwise."""
+    symbol = get_currency_symbol(data)
+    return f"Price ({symbol})" if symbol else "Price"
+
+
 def render_sidebar():
     with st.sidebar:
         st.markdown("""
@@ -598,18 +639,9 @@ def render_sidebar():
 
         params = {}
         if strategy_key == "sma":
-            col_fast1, col_fast2 = st.columns([3, 1])
-            with col_fast1:
-                fast_sma = st.slider("Fast Moving Average", 1, 200, 50, help="Short-term SMA period")
-            with col_fast2:
-                fast_sma = st.number_input("Fast", 1, 500, fast_sma, label_visibility="collapsed")
-            
-            col_slow1, col_slow2 = st.columns([3, 1])
-            with col_slow1:
-                slow_sma = st.slider("Slow Moving Average", 10, 250, 80, help="Long-term SMA period")
-            with col_slow2:
-                slow_sma = st.number_input("Slow", 10, 1000, slow_sma, label_visibility="collapsed")
-            
+            fast_sma = param_slider_input("fast_sma", "fast_sma_input", 1, 500, 50, "Fast Moving Average", "Short-term SMA period", "Fast")
+            slow_sma = param_slider_input("slow_sma", "slow_sma_input", 10, 1000, 80, "Slow Moving Average", "Long-term SMA period", "Slow")
+
             params = {"fast": fast_sma, "slow": slow_sma}
             st.markdown(f"""
             <div class="param-group">
@@ -620,12 +652,8 @@ def render_sidebar():
             </div>
             """, unsafe_allow_html=True)
         elif strategy_key == "rsi":
-            col_rsi1, col_rsi2 = st.columns([3, 1])
-            with col_rsi1:
-                rsi_period = st.slider("RSI Lookback Period", 1, 100, 20, help="RSI calculation period")
-            with col_rsi2:
-                rsi_period = st.number_input("Period", 1, 500, rsi_period, label_visibility="collapsed")
-            
+            rsi_period = param_slider_input("rsi_period", "rsi_period_input", 1, 500, 20, "RSI Lookback Period", "RSI calculation period", "Period")
+
             params = {"period": rsi_period}
             st.markdown(f"""
             <div class="param-group">
@@ -633,24 +661,10 @@ def render_sidebar():
             </div>
             """, unsafe_allow_html=True)
         else:
-            col_fast1, col_fast2 = st.columns([3, 1])
-            with col_fast1:
-                fast_sma = st.slider("Fast Moving Average", 1, 200, 50, help="Short-term SMA period")
-            with col_fast2:
-                fast_sma = st.number_input("Fast", 1, 500, fast_sma, label_visibility="collapsed", key="comp_fast")
-            
-            col_slow1, col_slow2 = st.columns([3, 1])
-            with col_slow1:
-                slow_sma = st.slider("Slow Moving Average", 10, 250, 80, help="Long-term SMA period")
-            with col_slow2:
-                slow_sma = st.number_input("Slow", 10, 1000, slow_sma, label_visibility="collapsed", key="comp_slow")
-            
-            col_rsi1, col_rsi2 = st.columns([3, 1])
-            with col_rsi1:
-                rsi_period = st.slider("RSI Lookback Period", 1, 100, 20, help="RSI calculation period")
-            with col_rsi2:
-                rsi_period = st.number_input("Period", 1, 500, rsi_period, label_visibility="collapsed", key="comp_rsi")
-            
+            fast_sma = param_slider_input("fast_sma", "fast_sma_input", 1, 500, 50, "Fast Moving Average", "Short-term SMA period", "Fast")
+            slow_sma = param_slider_input("slow_sma", "slow_sma_input", 10, 1000, 80, "Slow Moving Average", "Long-term SMA period", "Slow")
+            rsi_period = param_slider_input("rsi_period", "rsi_period_input", 1, 500, 20, "RSI Lookback Period", "RSI calculation period", "Period")
+
             params = {"fast": fast_sma, "slow": slow_sma, "rsi": rsi_period}
             st.markdown(f"""
             <div class="param-group">
@@ -741,6 +755,12 @@ def render_charts(data, strategy_choice):
     dates = cd['Date_Str']
     close = cd['Close']
 
+    sym = get_currency_symbol(data)
+    axis_label = price_axis_label(data)
+    tick_prefix = sym
+    h_price = f'%{{x}}<br>Price: {sym}%{{y:.2f}}<extra></extra>' if sym else '%{x}<br>Price: %{y:.2f}<extra></extra>'
+    h_sma = f'%{{x}}<br>%{{fullData.name}}: {sym}%{{y:.2f}}<extra></extra>' if sym else '%{x}<br>%{fullData.name}: %{y:.2f}<extra></extra>'
+
     st.markdown('<div class="section-header" style="margin-top: 2rem;"><span class="section-title">Strategy Visualization</span></div>', unsafe_allow_html=True)
 
     if strategy_choice == "SMA Crossover (Trend Following)":
@@ -751,17 +771,17 @@ def render_charts(data, strategy_choice):
         fig.add_trace(go.Scatter(
             x=dates, y=close, name="Stock Price",
             line=dict(color='#9CA3AF', width=1.5),
-            hovertemplate='%{x}<br>Price: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_price
         ))
         fig.add_trace(go.Scatter(
             x=dates, y=fast_sma, name="Fast SMA",
             line=dict(color='#10B981', width=2),
-            hovertemplate='%{x}<br>Fast SMA: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_sma
         ))
         fig.add_trace(go.Scatter(
             x=dates, y=slow_sma, name="Slow SMA",
             line=dict(color='#EF4444', width=2),
-            hovertemplate='%{x}<br>Slow SMA: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_sma
         ))
 
         fig.update_layout(
@@ -808,8 +828,8 @@ def render_charts(data, strategy_choice):
             yaxis=dict(
                 gridcolor='#1F2937',
                 zerolinecolor='#1F2937',
-                title="Price (₹)",
-                tickprefix="₹"
+                title=axis_label,
+                tickprefix=tick_prefix
             )
         )
 
@@ -829,7 +849,7 @@ def render_charts(data, strategy_choice):
         fig.add_trace(go.Scatter(
             x=dates, y=close, name="Stock Price",
             line=dict(color='#9CA3AF', width=1.5),
-            hovertemplate='%{x}<br>Price: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_price
         ), row=1, col=1)
 
         fig.add_trace(go.Scatter(
@@ -876,8 +896,8 @@ def render_charts(data, strategy_choice):
             yaxis=dict(
                 gridcolor='#1F2937',
                 zerolinecolor='#1F2937',
-                title="Price (₹)",
-                tickprefix="₹"
+                title=axis_label,
+                tickprefix=tick_prefix
             ),
             yaxis2=dict(
                 gridcolor='#1F2937',
@@ -905,17 +925,17 @@ def render_charts(data, strategy_choice):
         fig.add_trace(go.Scatter(
             x=dates, y=close, name="Stock Price",
             line=dict(color='#9CA3AF', width=1.5),
-            hovertemplate='%{x}<br>Price: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_price
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=fast_sma, name="Fast SMA",
             line=dict(color='#10B981', width=2),
-            hovertemplate='%{x}<br>Fast SMA: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_sma
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=slow_sma, name="Slow SMA",
             line=dict(color='#EF4444', width=2),
-            hovertemplate='%{x}<br>Slow SMA: ₹%{y:.2f}<extra></extra>'
+            hovertemplate=h_sma
         ), row=1, col=1)
 
         fig.add_trace(go.Scatter(
@@ -972,8 +992,8 @@ def render_charts(data, strategy_choice):
             yaxis=dict(
                 gridcolor='#1F2937',
                 zerolinecolor='#1F2937',
-                title="Price (₹)",
-                tickprefix="₹"
+                title=axis_label,
+                tickprefix=tick_prefix
             ),
             yaxis2=dict(
                 gridcolor='#1F2937',
