@@ -90,15 +90,61 @@ def get_currency_symbol(currency_code: str | None) -> str:
     return CURRENCY_SYMBOLS.get(currency_code.upper(), "")
 
 
-def fetch_ticker_currency(ticker: str) -> str | None:
-    """Fetch currency code for a ticker from yfinance metadata (quoteSummary)."""
+def currency_from_history_meta(stock) -> str | None:
+    """Currency from the chart meta block yfinance already downloaded with the prices."""
     try:
-        session = requests.Session()
-        session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-        info = yf.Ticker(ticker, session=session).info
-        currency = info.get("currency")
-        if currency:
-            return str(currency).strip().upper()
+        meta = getattr(stock, "history_metadata", None) or {}
+        code = meta.get("currency")
+        if code:
+            return str(code).strip().upper()
+    except Exception:
+        pass
+    return None
+
+
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+
+
+def currency_from_chart_api(ticker: str, session=None) -> str | None:
+    """Currency from Yahoo's chart API meta block - crumb-free and independent of yfinance."""
+    try:
+        s = session or requests.Session()
+        s.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+        resp = s.get(YAHOO_CHART_URL.format(ticker=ticker),
+                     params={'range': '1d', 'interval': '1d'}, timeout=15)
+        if resp.status_code != 200:
+            return None
+        meta = resp.json()["chart"]["result"][0]["meta"]
+        code = meta.get("currency")
+        if code:
+            return str(code).strip().upper()
+    except Exception:
+        pass
+    return None
+
+
+def currency_from_info(stock) -> str | None:
+    """Currency from yfinance quoteSummary metadata (rate-limited, so last resort)."""
+    try:
+        code = (stock.info or {}).get("currency")
+        if code:
+            return str(code).strip().upper()
+    except Exception:
+        pass
+    return None
+
+
+def fetch_ticker_currency(ticker: str) -> str | None:
+    """Resolve a ticker's currency without assuming anything from the symbol's suffix."""
+    code = currency_from_chart_api(ticker)
+    if code:
+        return code
+    try:
+        stock = yf.Ticker(ticker)
+        stock.history(period="5d")  # populates history_metadata
+        code = currency_from_history_meta(stock) or currency_from_info(stock)
+        if code:
+            return code
     except Exception:
         pass
     return None
@@ -150,15 +196,10 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> tuple[pd.DataFrame, 
             stock = yf.Ticker(ticker, session=session)
             df = stock.history(period=period)
             if not df.empty:
-                # Get currency from ticker info
-                try:
-                    info = stock.info
-                    currency = info.get("currency")
-                    if currency:
-                        currency = currency.upper()
-                except Exception:
-                    pass
-                
+                currency = (currency_from_history_meta(stock)
+                            or currency_from_chart_api(ticker, session)
+                            or currency_from_info(stock))
+
                 df.to_sql(cache_key, conn, if_exists='replace')
                 # Cache currency metadata
                 if currency:
@@ -189,14 +230,17 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> tuple[pd.DataFrame, 
             })
             df.set_index('Date', inplace=True)
             df.to_sql(cache_key, conn, if_exists='replace')
-            # yahooquery doesn't easily expose currency, try to get from summary_detail
+            # yahooquery has no reliable currency field; try it, then yfinance's chart metadata
             try:
                 summary = ticker_obj.summary_detail
-                if ticker in summary and 'currency' in summary[ticker]:
-                    currency = summary[ticker]['currency'].upper()
-                    pd.DataFrame([{"currency": currency}]).to_sql(f"{cache_key}_meta", conn, if_exists='replace')
+                if ticker in summary and summary[ticker].get('currency'):
+                    currency = str(summary[ticker]['currency']).strip().upper()
             except Exception:
                 pass
+            if not currency:
+                currency = currency_from_chart_api(ticker, session)
+            if currency:
+                pd.DataFrame([{"currency": currency}]).to_sql(f"{cache_key}_meta", conn, if_exists='replace')
             print(f"yahooquery success: {len(df)} rows for {ticker}, currency={currency}")
             conn.close()
             return df, currency
