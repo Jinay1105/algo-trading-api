@@ -525,9 +525,9 @@ def render_hero():
     <div class="hero-section">
         <div style="position: relative; z-index: 1;">
             <h1 class="hero-title">Quantitative Backtesting Engine</h1>
-            <p class="hero-subtitle">Enterprise-grade algorithmic trading simulation platform. Validate strategies against historical data with institutional-quality analytics and visualization.</p>
+            <p class="hero-subtitle">Algorithmic trading simulation platform for backtesting strategies against historical market data.</p>
             <div class="hero-badges">
-                <span class="badge accent">⚡ Real-time API</span>
+                <span class="badge accent">⚡ REST API</span>
                 <span class="badge accent">📊 3 Strategies</span>
                 <span class="badge accent">🔍 Interactive Charts</span>
                 <span class="badge accent">📈 Performance Metrics</span>
