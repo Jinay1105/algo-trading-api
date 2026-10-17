@@ -11,7 +11,8 @@ RUN mkdir -p /data && chown -R appuser:appuser /data
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py engine.py ./
+# Copy all backend files including the api folder
+COPY . .
 
 RUN chown -R appuser:appuser /app
 USER appuser
