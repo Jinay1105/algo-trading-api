@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir \
     plotly==5.24.1 \
     pandas==2.2.2
 
+# Copy dashboard file from frontend context
 COPY dashboard.py .
 
 RUN chown -R appuser:appuser /app
