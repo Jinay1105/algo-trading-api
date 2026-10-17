@@ -2,16 +2,28 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Annotated, Optional
+from typing import Annotated, Optional, List
 from typing_extensions import Self
 import pandas as pd
-from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
-from api.config import VALID_PERIODS, CURRENCY_SYMBOLS, DB_NAME, YAHOO_CHART_URL
-from api.services.market_data import (
+import os
+import time
+import requests
+import sqlite3
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+from backend.engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
+from backend.api.config import VALID_PERIODS, CURRENCY_SYMBOLS, DB_NAME, YAHOO_CHART_URL
+from backend.api.services.market_data import (
     get_currency_symbol,
     fetch_or_cache_data,
     validate_ticker_exists
 )
+from backend.chatbot.graph import app as chatbot_graph
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
 
 # Pydantic model for query/body validation (not path params)
 class TickerRequest(BaseModel):
@@ -51,53 +63,102 @@ class TickerRequest(BaseModel):
 
         return self
 
-
+# Initialize FastAPI app
 app = FastAPI(title="Algo Trading Backtest API")
 
-# CORS middleware for cross-origin requests (e.g., from dashboard on different domain)
+# CORS middleware for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to your dashboard domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Initialize memory for the chatbot
+memory = MemorySaver()
+chatbot_graph = chatbot_graph
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+
+class ChatResponse(BaseModel):
+    response: str
+    chart_data: Optional[dict] = None
+    performance: Optional[dict] = None
+    ticker: Optional[str] = None
+    currency: Optional[str] = None
+    currency_symbol: Optional[str] = None
+    strategy: Optional[str] = None
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest):
+    """
+    Chat endpoint for the Quant Assistant.
+    """
+    config = {"configurable": {"thread_id": request.session_id}}
+
+    try:
+        # Invoke the graph with the user message
+        final_state = chatbot_graph.invoke(
+            {"messages": [HumanMessage(content=request.message)]},
+            config=config
+        )
+
+        # The last message in the state is the AI's final response
+        last_message = final_state["messages"][-1]
+        content = last_message.content
+
+        # If content is a list of blocks (Gemini multimodal format), extract the text
+        if isinstance(content, list):
+            text_parts = [block["text"] for block in content if isinstance(block, dict) and "text" in block]
+            response_text = " ".join(text_parts)
+        else:
+            response_text = str(content)
+
+        # Extract performance and chart data from the state if available
+        perf = final_state.get("performance")
+        chart = final_state.get("chart_data")
+        ticker = final_state.get("current_ticker")
+        currency = final_state.get("currency")
+        curr_sym = get_currency_symbol(currency)
+        strat = final_state.get("current_strategy")
+
+        return ChatResponse(
+            response=response_text,
+            chart_data=chart,
+            performance=perf,
+            ticker=ticker,
+            currency=currency,
+            currency_symbol=curr_sym,
+            strategy=strat
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
+
 @app.get("/")
 def landing():
     return {"detail": "Hello,Welcome to Algo Backtesting Engine"}
-
 
 @app.get("/health")
 def health():
     return {"status": "healthy", "service": "api"}
 
+# --- Existing Backtest Endpoints (Refactored to use services.market_data) ---
 
-# Use Path parameter with validation for path parameters
 @app.get("/backtest/sma/{ticker}")
-def run_sma_backtest(
-    ticker: Annotated[str, Path(
-        min_length=1,
-        max_length=20,
-        description='Stock ticker symbol',
-        examples=['GOOG', 'TSLA', 'RELIANCE.NS']
-    )],
-    fast: Annotated[int, Query(ge=1,le=500)] = 10,
-    slow: Annotated[int, Query(ge=1,le=1000)] = 50,
-    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
-):
+def run_sma_backtest(ticker: str, fast: int = 10, slow: int = 50, period: str = "1y"):
     if fast >= slow:
         raise HTTPException(status_code=422, detail='Fast SMA must be less than Slow SMA')
-
     ticker = ticker.strip().upper()
     hist, currency = validate_ticker_exists(ticker, period)
-
     results = apply_sma_crossover(hist, fast, slow)
     metrics = calculate_metrics(results)
     chart_df = results.copy()
     chart_df['Date_Str'] = chart_df.index.astype(str)
     chart_data = chart_df[['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA']].to_dict(orient="list")
-
     return {
         "ticker": ticker,
         "currency": currency,
@@ -114,27 +175,15 @@ def run_sma_backtest(
         "chart_data": chart_data
     }
 
-
 @app.get("/backtest/rsi/{ticker}")
-def run_rsi_backtest(
-    ticker: Annotated[str, Path(
-        min_length=1,
-        max_length=20,
-        description='Stock ticker symbol',
-        examples=['GOOG', 'TSLA', 'RELIANCE.NS']
-    )],
-    rsi: Annotated[int, Query(ge=1,le = 500)] = 14,
-    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
-):
+def run_rsi_backtest(ticker: str, rsi: int = 14, period: str = "1y"):
     ticker = ticker.strip().upper()
     hist, currency = validate_ticker_exists(ticker, period)
-
     results = apply_rsi_strategy(hist, rsi)
     metrics = calculate_metrics(results)
     chart_df = results.copy()
     chart_df['Date_Str'] = chart_df.index.astype(str)
     chart_data = chart_df[['Date_Str', 'Close', 'RSI']].to_dict(orient="list")
-
     return {
         "ticker": ticker,
         "currency": currency,
@@ -151,38 +200,22 @@ def run_rsi_backtest(
         "chart_data": chart_data
     }
 
-
 @app.get("/backtest/composite/{ticker}")
-def run_composite_backtest(
-    ticker: Annotated[str, Path(
-        min_length=1,
-        max_length=20,
-        pattern=r'^[A-Z0-9\.\-]+$',
-        description='Stock ticker symbol',
-        examples=['GOOG', 'TSLA', 'RELIANCE.NS']
-    )],
-    fast: Annotated[int, Query(ge=1,le=500)] = 10,
-    slow: Annotated[int, Query(ge=1,le=1000)] = 50,
-    rsi: Annotated[int, Query(ge=1,le=500)] = 14,
-    period: Annotated[str, Query(pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$")] = "1y"
-):
+def run_composite_backtest(ticker: str, fast: int = 10, slow: int = 50, rsi: int = 14, period: str = "1y"):
     if fast >= slow:
         raise HTTPException(status_code=422, detail='Fast SMA must be less than Slow SMA')
-
     ticker = ticker.strip().upper()
     hist, currency = validate_ticker_exists(ticker, period)
-
     results = apply_composite_strategy(hist, fast, slow, rsi)
     metrics = calculate_metrics(results)
     chart_df = results.copy()
     chart_df['Date_Str'] = chart_df.index.astype(str)
     chart_data = chart_df[['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA', 'RSI']].to_dict(orient="list")
-
     return {
         "ticker": ticker,
         "currency": currency,
         "currency_symbol": get_currency_symbol(currency),
-        "strategy": f"Composite SMA+RSI",
+        "strategy": "Composite SMA+RSI",
         "performance": {
             "market_return_percent": round((results['Cumulative_Market'].iloc[-1] - 1) * 100, 2),
             "strategy_return_percent": round((results['Cumulative_Strategy'].iloc[-1] - 1) * 100, 2),
@@ -193,7 +226,6 @@ def run_composite_backtest(
         },
         "chart_data": chart_data
     }
-
 
 # Alternative: POST endpoint using Pydantic model for request body
 @app.post("/backtest")
