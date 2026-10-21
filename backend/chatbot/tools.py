@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from services.market_data import validate_ticker_exists
-from engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
+from backend.engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
 import pandas as pd
 
 @tool

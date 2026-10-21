@@ -1,6 +1,6 @@
 import sqlite3
 import pandas as pd
-from api.config import DB_NAME
+from backend.api.config import DB_NAME
 
 def get_db_connection():
     """Returns a connection to the SQLite database."""

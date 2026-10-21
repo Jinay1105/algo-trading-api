@@ -1,7 +1,8 @@
+import pandas as pd
 import requests
 import yfinance as yf
-from api.config import YAHOO_CHART_URL, CURRENCY_SYMBOLS
-from api.db.database import load_from_cache, load_meta_from_cache, save_to_cache, save_meta_to_cache
+from backend.api.config import YAHOO_CHART_URL, CURRENCY_SYMBOLS
+from backend.api.db.database import load_from_cache, load_meta_from_cache, save_to_cache, save_meta_to_cache
 
 def get_currency_symbol(currency_code: str | None) -> str:
     """Map currency code to display symbol. Returns empty string if unknown."""
@@ -142,5 +143,4 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> tuple:
     except Exception as e:
         print(f"yahooquery failed: {e}")
 
-    import pandas as pd
     return pd.DataFrame(), None

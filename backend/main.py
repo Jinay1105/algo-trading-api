@@ -18,8 +18,7 @@ from backend.engine import apply_sma_crossover, apply_rsi_strategy, apply_compos
 from backend.api.config import VALID_PERIODS, CURRENCY_SYMBOLS, DB_NAME, YAHOO_CHART_URL
 from backend.api.services.market_data import (
     get_currency_symbol,
-    fetch_or_cache_data,
-    validate_ticker_exists
+    fetch_or_cache_data
 )
 from backend.chatbot.graph import app as chatbot_graph
 from langchain_core.messages import HumanMessage
