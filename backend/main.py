@@ -1,32 +1,23 @@
-from fastapi import FastAPI, HTTPException, Path, Query
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Annotated, Optional, List
+from typing import Annotated, Optional
 from typing_extensions import Self
-import pandas as pd
-import os
-import time
-import requests
-import sqlite3
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
 from backend.engine import apply_sma_crossover, apply_rsi_strategy, apply_composite_strategy, calculate_metrics
-from backend.api.config import VALID_PERIODS, CURRENCY_SYMBOLS, DB_NAME, YAHOO_CHART_URL
 from backend.api.services.market_data import (
     get_currency_symbol,
-    fetch_or_cache_data,
-     validate_ticker_exists
-
+    validate_ticker_exists
 )
 from backend.chatbot.graph import app as chatbot_graph
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-# Pydantic model for query/body validation (not path params)
+# Pydantic model for query/body validation
 class TickerRequest(BaseModel):
     ticker: Annotated[str, Field(
         min_length=1,
@@ -43,7 +34,6 @@ class TickerRequest(BaseModel):
     @field_validator('ticker')
     @classmethod
     def validate_ticker_format(cls, v: str) -> str:
-        """Validate ticker format - uppercase, alphanumeric with dots/hyphens"""
         v = v.strip().upper()
         if not v:
             raise ValueError('Ticker cannot be empty')
@@ -55,19 +45,14 @@ class TickerRequest(BaseModel):
     def validate_combination(self) -> Self:
         has_sma = self.fast is not None and self.slow is not None
         has_rsi = self.rsi is not None
-
         if not has_sma and not has_rsi:
             raise ValueError('Provide either (fast + slow) for SMA, rsi for RSI, or all three for Composite')
-
         if has_sma and self.fast >= self.slow:
             raise ValueError('Fast SMA must be less than Slow SMA')
-
         return self
 
-# Initialize FastAPI app
 app = FastAPI(title="Algo Trading Backtest API")
 
-# CORS middleware for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -76,7 +61,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize memory for the chatbot
 memory = MemorySaver()
 chatbot_graph = chatbot_graph
 
@@ -95,30 +79,20 @@ class ChatResponse(BaseModel):
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
-    """
-    Chat endpoint for the Quant Assistant.
-    """
     config = {"configurable": {"thread_id": request.session_id}}
-
     try:
-        # Invoke the graph with the user message
         final_state = chatbot_graph.invoke(
             {"messages": [HumanMessage(content=request.message)]},
             config=config
         )
-
-        # The last message in the state is the AI's final response
         last_message = final_state["messages"][-1]
         content = last_message.content
-
-        # If content is a list of blocks (Gemini multimodal format), extract the text
         if isinstance(content, list):
             text_parts = [block["text"] for block in content if isinstance(block, dict) and "text" in block]
             response_text = " ".join(text_parts)
         else:
             response_text = str(content)
 
-        # Extract performance and chart data from the state if available
         perf = final_state.get("performance")
         chart = final_state.get("chart_data")
         ticker = final_state.get("current_ticker")
@@ -135,19 +109,16 @@ async def chat_endpoint(request: ChatRequest):
             currency_symbol=curr_sym,
             strategy=strat
         )
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
 @app.get("/")
 def landing():
-    return {"detail": "Hello,Welcome to Algo Backtesting Engine"}
+    return {"detail": "Hello, Welcome to Algo Backtesting Engine"}
 
 @app.get("/health")
 def health():
     return {"status": "healthy", "service": "api"}
-
-# --- Existing Backtest Endpoints (Refactored to use services.market_data) ---
 
 @app.get("/backtest/sma/{ticker}")
 def run_sma_backtest(ticker: str, fast: int = 10, slow: int = 50, period: str = "1y"):
@@ -228,29 +199,23 @@ def run_composite_backtest(ticker: str, fast: int = 10, slow: int = 50, rsi: int
         "chart_data": chart_data
     }
 
-# Alternative: POST endpoint using Pydantic model for request body
 @app.post("/backtest")
 def run_backtest(request: TickerRequest):
-    ticker = request.ticker  # Already validated & normalized
+    ticker = request.ticker
     hist, currency = validate_ticker_exists(ticker, request.period)
-
     has_sma = request.fast is not None and request.slow is not None
+    has_sma_rsi = has_sma and request.rsi is not None
     has_rsi = request.rsi is not None
 
-    if has_sma and has_rsi:
-        # Composite
+    if has_sma_rsi:
         results = apply_composite_strategy(hist, request.fast, request.slow, request.rsi)
         strategy_name = f"Composite SMA+RSI ({request.fast}/{request.slow}/{request.rsi})"
         chart_fields = ['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA', 'RSI']
-
     elif has_sma:
-        # SMA only
         results = apply_sma_crossover(hist, request.fast, request.slow)
         strategy_name = f"SMA Crossover ({request.fast}/{request.slow})"
         chart_fields = ['Date_Str', 'Close', 'Fast_SMA', 'Slow_SMA']
-
     else:
-        # RSI only
         results = apply_rsi_strategy(hist, request.rsi)
         strategy_name = f"RSI Mean Reversion ({request.rsi})"
         chart_fields = ['Date_Str', 'Close', 'RSI']

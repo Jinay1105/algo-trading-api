@@ -1,4 +1,3 @@
-import os
 from typing import Literal
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
@@ -9,12 +8,11 @@ from backend.chatbot.tools import run_backtest
 from langchain_core.messages import HumanMessage, AIMessage
 
 # Load Gemini Model
-# Ensure GOOGLE_API_KEY is set in environment
 model = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
 tools = [run_backtest]
 model_with_tools = model.bind_tools(tools)
 
-# Define Nodes
+# Simple tool-calling agent logic (Return to original loop)
 def call_model(state: AgentState):
     """Decides whether to call a tool or respond to the user."""
     messages = state.messages

@@ -5,6 +5,7 @@ from plotly.subplots import make_subplots
 import time
 import os
 import uuid
+import json
 
 # API_BASE is the primary URL (Render production)
 API_BASE = os.getenv("API_BASE", "https://algo-trading-api-mpd1.onrender.com")
@@ -548,6 +549,33 @@ CUSTOM_CSS = """
         border: 1px solid rgba(16, 185, 129, 0.2);
         border-bottom-left-radius: 2px;
     }
+
+    .thinking-process {
+        background: rgba(59, 130, 246, 0.05);
+        border: 1px dashed var(--accent-secondary);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .thinking-step {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .thinking-step.active {
+        color: var(--accent-secondary);
+        font-weight: 600;
+    }
+
+    .thinking-step.completed {
+        color: var(--accent-primary);
+    }
 </style>
 """
 
@@ -1037,180 +1065,105 @@ def render_charts(data, strategy_choice):
 
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
+def render_chat():
+    st.markdown('<div class="section-header"><span class="section-title">Quant Assistant AI</span></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+    Chat with our AI to run backtests and analyze stocks using natural language.
+    </p>
+    """, unsafe_allow_html=True)
+
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "chat_session_id" not in st.session_state:
+        st.session_state.chat_session_id = str(uuid.uuid4())
+
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.messages:
+            div_class = "chat-message user" if msg["role"] == "user" else "chat-message bot"
+            st.markdown(f'<div class="{div_class}">{msg["content"]}</div>', unsafe_allow_html=True)
+
+    if prompt := st.chat_input("e.g., Run a 10/50 SMA backtest for AAPL"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.markdown(f'<div class="chat-message user">{prompt}</div>', unsafe_allow_html=True)
+
+        with st.spinner("Consulting Quant Engine..."):
+            try:
+                payload = {"session_id": st.session_state.chat_session_id, "message": prompt}
+
+                # Using requests to handle a response from FastAPI
+                response = requests.post(f"{FALLBACK_API_BASE}/chat", json=payload, timeout=120)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    final_response = data.get("response", "")
+
+                    # Render final response
+                    st.markdown(f'<div class="chat-message bot">{final_response}</div>', unsafe_allow_html=True)
+
+                    # Update session state
+                    st.session_state.messages.append({"role": "bot", "content": final_response})
+
+                    # Render Charts/Metrics if present
+                    if data.get("chart_data") and data.get("performance"):
+                        strat = data.get("strategy", "")
+                        strategy_map = {"SMA": "SMA Crossover (Trend Following)", "RSI": "RSI (Mean Reversion)", "Composite": "Composite (SMA + RSI)"}
+                        mapped_strategy = strategy_map.get(strat, strat)
+                        render_metrics(data)
+                        render_charts(data, mapped_strategy)
+                else:
+                    st.error(f"AI Error: {response.text}")
+            except Exception as e:
+                st.error(f"Connection Error: {str(e)}")
+
 def main():
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    ticker, strategy_choice, strategy_key, params, run_button, period = render_sidebar()
+    render_hero()
 
-    # App Navigation
-    page = st.sidebar.radio("Navigation", ["Backtesting Dashboard", "Quant AI Assistant"])
+    if run_button:
+        with st.spinner("Running Backtest..."):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            for i, (pct, msg) in enumerate([(10, "Connecting..."), (30, "Fetching..."), (50, "Executing..."), (70, "Calculating..."), (90, "Visualizing..."), (100, "Complete!")]):
+                progress_bar.progress(pct)
+                status_text.markdown(f'<div style="color: var(--text-secondary); font-size: 0.875rem;">{msg}</div>', unsafe_allow_html=True)
+                time.sleep(0.1)
+            progress_bar.empty()
+            status_text.empty()
 
-    if page == "Backtesting Dashboard":
-        render_hero()
-        ticker, strategy_choice, strategy_key, params, run_button, period = render_sidebar()
+            try:
+                if strategy_key == "sma":
+                    api_path = f"/backtest/sma/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
+                elif strategy_key == "rsi":
+                    api_path = f"/backtest/rsi/{ticker}?rsi={params['period']}&period={period}"
+                else:
+                    api_path = f"/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
 
-        if run_button:
-            with st.spinner("Running Backtest..."):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                response = None
+                for base_url, label in [(API_BASE, "Render"), (FALLBACK_API_BASE, "Local")]:
+                    try:
+                        response = requests.get(f"{base_url}{api_path}", timeout=30)
+                        if response.status_code == 200:
+                            st.info(f"✅ Used {label} API")
+                            break
+                    except:
+                        continue
 
-                for i, (pct, msg) in enumerate([
-                    (10, "Connecting to API..."),
-                    (30, "Fetching market data..."),
-                    (50, "Running backtest engine..."),
-                    (70, "Calculating performance metrics..."),
-                    (90, "Generating visualizations..."),
-                    (100, "Complete!")
-                ]):
-                    progress_bar.progress(pct)
-                    status_text.markdown(f'<div style="color: var(--text-secondary); font-size: 0.875rem;">{msg}</div>', unsafe_allow_html=True)
-                    time.sleep(0.15)
+                if response and response.status_code == 200:
+                    data = response.json()
+                    st.success(f"Simulation Complete: {data['strategy']}")
+                    render_metrics(data)
+                    render_charts(data, strategy_choice)
+                else:
+                    st.error("🚨 System Error: All APIs failed.")
+            except Exception as e:
+                st.error(f"🚨 Unexpected Error: {str(e)}")
 
-                progress_bar.empty()
-                status_text.empty()
-
-                try:
-                    # Build API URL path based on strategy
-                    if strategy_key == "sma":
-                        api_path = f"/backtest/sma/{ticker}?fast={params['fast']}&slow={params['slow']}&period={period}"
-                    elif strategy_key == "rsi":
-                        api_path = f"/backtest/rsi/{ticker}?rsi={params['period']}&period={period}"
-                    else:
-                        api_path = f"/backtest/composite/{ticker}?fast={params['fast']}&slow={params['slow']}&rsi={params['rsi']}&period={period}"
-
-                    # Try primary API (Render) first, then fallback to local
-                    response = None
-                    validation_error = None
-
-                    for base_url, label in [(API_BASE, "Render"), (FALLBACK_API_BASE, "Local")]:
-                        try:
-                            response = requests.get(f"{base_url}{api_path}", timeout=30)
-
-                            if response.status_code == 200:
-                                st.info(f"✅ Used {label} API")
-                                break
-                            elif response.status_code == 422:
-                                # Validation error - don't try fallback, show the error immediately
-                                try:
-                                    error_data = response.json()
-                                    validation_error = error_data.get('detail', 'Validation error')
-                                except:
-                                    validation_error = response.text[:300] if response.text else 'Validation error'
-                                st.error(f"🚨 Validation Error: {validation_error}")
-                                response = None  # Ensure we don't process as success
-                                break
-                            elif response.status_code >= 500:
-                                # Server error - try fallback
-                                st.warning(f"⚠️ {label} API server error ({response.status_code}), trying fallback...")
-                            else:
-                                # Other client errors (4xx except 422) - don't retry
-                                try:
-                                    error_data = response.json()
-                                    error_msg = error_data.get('detail', f'HTTP {response.status_code}')
-                                except:
-                                    error_msg = response.text[:300] if response.text else f'HTTP {response.status_code}'
-                                st.error(f"🚨 API Error: {error_msg}")
-                                response = None
-                                break
-
-                        except requests.exceptions.ConnectionError:
-                            st.warning(f"⚠️ {label} API unreachable, trying fallback...")
-                        except requests.exceptions.Timeout:
-                            st.warning(f"⚠️ {label} API timeout, trying fallback...")
-
-                    if response is not None and response.status_code == 200:
-                        data = response.json()
-                        if "error" in data:
-                            st.error(f"API Error: {data['error']}")
-                        else:
-                            st.success(f"Simulation Complete: {data['strategy']}")
-                            render_metrics(data)
-                            render_charts(data, strategy_choice)
-                    elif not validation_error:
-                        # All APIs failed (connection/timeout) or unexpected error
-                        try:
-                            error_code = response.json() if response else {}
-                            error_msg = error_code.get('detail', 'All APIs failed')
-                        except:
-                            error_msg = response.text[:300] if response and response.text else 'All APIs failed'
-                        st.error(f"🚨 System Error: {error_msg}")
-
-                except requests.exceptions.Timeout:
-                    st.error("🚨 Request Timeout: The API took too long to respond. Please try again.")
-                except requests.exceptions.ConnectionError:
-                    st.error("🚨 CRITICAL: Cannot connect to the API. Is your Docker container running?")
-                except Exception as e:
-                    st.error(f"🚨 Unexpected Error: {str(e)}")
-
-    elif page == "Quant AI Assistant":
-        st.markdown('<div class="section-header"><span class="section-title">Quant Assistant AI</span></div>', unsafe_allow_html=True)
-        st.markdown("""
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-        Chat with our AI to run backtests and analyze stocks using natural language.
-        </p>
-        """, unsafe_allow_html=True)
-
-        # Session state for chat history and session ID
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-        if "chat_session_id" not in st.session_state:
-            st.session_state.chat_session_id = str(uuid.uuid4())
-
-        # Display chat history
-        chat_container = st.container()
-        with chat_container:
-            for msg in st.session_state.messages:
-                div_class = "chat-message user" if msg["role"] == "user" else "chat-message bot"
-                st.markdown(f'<div class="{div_class}">{msg["content"]}</div>', unsafe_allow_html=True)
-
-        # Chat input
-        if prompt := st.chat_input("e.g., Run a 10/50 SMA backtest for AAPL"):
-            # Add user message to state
-            st.session_state.messages.append({"role": "user", "content": prompt})
-
-            # Display user message immediately
-            st.markdown(f'<div class="chat-message user">{prompt}</div>', unsafe_allow_html=True)
-
-            with st.spinner("Consulting Quant Engine..."):
-                try:
-                    # Call the /chat endpoint
-                    payload = {
-                        "session_id": st.session_state.chat_session_id,
-                        "message": prompt
-                    }
-                    # Try local first for development, then fallback to production
-                    response = requests.post(f"{FALLBACK_API_BASE}/chat", json=payload, timeout=60)
-
-                    if response.status_code == 200:
-                        res_data = response.json()
-                        bot_response = res_data.get("response", "No response from bot.")
-                        st.session_state.messages.append({"role": "bot", "content": bot_response})
-                        st.markdown(f'<div class="chat-message bot">{bot_response}</div>', unsafe_allow_html=True)
-
-                        # Render Charts and Metrics if data is provided by the LLM tool
-                        if res_data.get("chart_data") and res_data.get("performance"):
-                            # Map the strategy name from the bot to the dashboard's expected format
-                            strat = res_data.get("strategy", "")
-                            strategy_map = {
-                                "SMA": "SMA Crossover (Trend Following)",
-                                "RSI": "RSI (Mean Reversion)",
-                                "Composite": "Composite (SMA + RSI)"
-                            }
-                            # Use mapping or default to the returned strategy string
-                            mapped_strategy = strategy_map.get(strat, strat)
-
-                            render_metrics(res_data)
-                            render_charts(res_data, mapped_strategy)
-                    else:
-                        st.error(f"AI Error: {response.text}")
-                except Exception as e:
-                    st.error(f"Connection Error: {str(e)}")
-
-    # Footer
-    st.markdown("""
-    <div class="footer">
-        <p>Algo Trading · Quantitative Backtesting Engine </p>
-        <p style="margin-top: 0.5rem; font-size: 0.75rem;">⚠️ This is a simulation tool for educational purposes. Past performance does not guarantee future results.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div style="margin-top: 4rem; border-top: 1px solid var(--border-color); padding-top: 2rem;"></div>', unsafe_allow_html=True)
+    render_chat()
+    st.markdown('<div class="footer"><p>Algo Trading · Quantitative Backtesting Engine</p></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
