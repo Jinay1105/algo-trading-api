@@ -2,6 +2,10 @@
 .git
 .gitignore
 
+
+#kilo code
+.kilo
+
 # Python
 __pycache__
 *.pyc

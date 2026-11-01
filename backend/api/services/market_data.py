@@ -65,7 +65,7 @@ def fetch_ticker_currency(ticker: str) -> str | None:
 
 def fetch_or_cache_data(ticker: str, period: str = "1y") -> tuple:
     """Fetch data from cache or yfinance/yahooquery with retries and fallback. Returns (dataframe, currency_code)."""
-    from api.config import VALID_PERIODS
+    from backend.api.config import VALID_PERIODS
     if period not in VALID_PERIODS:
         period = "1y"
 
@@ -144,3 +144,12 @@ def fetch_or_cache_data(ticker: str, period: str = "1y") -> tuple:
         print(f"yahooquery failed: {e}")
 
     return pd.DataFrame(), None
+
+def validate_ticker_exists(ticker: str, period: str = "1y") -> tuple[pd.DataFrame, str | None]:
+    """Fetch data and raise 404 if ticker not found. Returns (dataframe, currency_code)."""
+    hist, currency = fetch_or_cache_data(ticker, period)
+    if hist.empty:
+        # We raise a generic Exception here because the FastAPI HTTPException
+        # is better handled in the route layer.
+        raise ValueError(f"Ticker '{ticker}' not found or no data available for period '{period}'")
+    return hist, currency
